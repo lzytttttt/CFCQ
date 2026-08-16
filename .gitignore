@@ -11,3 +11,6 @@ Thumbs.db
 # 编辑器
 .vscode/
 .idea/
+
+# CodeBuddy 本地数据
+.codebuddy/
