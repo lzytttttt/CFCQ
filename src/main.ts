@@ -2,10 +2,7 @@
  * 《藏锋出鞘》入口（wiki/09-tech/架构设计.md §4 目录结构：main.ts）
  *
  * 职责：初始化 Canvas（letterbox 等比缩放）、组装 GameContext、
- * 注册状态机与游戏主循环、接线 RenderSystem 分层渲染。
- *
- * 当前状态：第三里程碑（玩家转刀战斗闭环）—— BattleState 接入；
- * 后续里程碑接入 Menu / Upgrade / GameOver / Victory 等状态。
+ * 注册状态机（Menu / Battle）与游戏主循环、接线 RenderSystem 分层渲染。
  */
 
 import { EventBus } from './core/EventBus';
@@ -18,12 +15,11 @@ import { InputSystem } from './input/InputSystem';
 import { Camera } from './render/Camera';
 import { DamageNumbers } from './render/DamageNumbers';
 import { ParticleSystem } from './render/ParticleSystem';
-import { RenderSystem } from './render/RenderSystem';
+import { RenderSystem as RS } from './render/RenderSystem';
 import { DEFAULT_WORLD_H, DEFAULT_WORLD_W, VIEW_H, VIEW_W } from './render/View';
 import { BattleState } from './states/BattleState';
-
-/** 固定演示种子（正式 Rogue 流程由每局随机派生） */
-const RUN_SEED = 20260819;
+import { MenuState, injectMenuStyles } from './ui/MenuState';
+import { VERSION } from './version';
 
 function bootstrap(): void {
   const canvasEl = document.getElementById('game');
@@ -47,7 +43,7 @@ function bootstrap(): void {
   const input = new InputSystem();
   input.attach();
 
-  const rng = new RNG(RUN_SEED);
+  const rng = new RNG(Date.now() >>> 0); // 每局随机种子（Rogue）
   const ctx: GameContext = {
     entities: new EntityManager(),
     events: new EventBus(),
@@ -61,15 +57,18 @@ function bootstrap(): void {
   const camera = new Camera(VIEW_W, VIEW_H, DEFAULT_WORLD_W, DEFAULT_WORLD_H);
   const particles = new ParticleSystem(rng.fork());
   const damageNumbers = new DamageNumbers(rng.fork());
-  const renderSystem = new RenderSystem(camera);
+  const renderSystem = new RS(camera);
 
-  // ---- 状态机 ----
+  // ---- 状态机：Menu → Battle ----
   const loop = new GameLoop();
-  const sm = new StateMachine<'battle'>();
-  sm.register(
-    'battle',
-    new BattleState(loop, camera, renderSystem, particles, damageNumbers),
-  );
+  const sm = new StateMachine<'menu' | 'battle'>();
+  const overlay = document.getElementById('ui-overlay') ?? undefined;
+  injectMenuStyles();
+  const menu = new MenuState(overlay!, VERSION);
+  const battle = new BattleState(loop, camera, renderSystem, particles, damageNumbers);
+  sm.register('menu', menu);
+  sm.register('battle', battle);
+  menu.onBegin(() => sm.transition('battle', ctx));
 
   // ---- 主循环接线 ----
   loop.onUpdate((dt) => {
@@ -77,10 +76,16 @@ function bootstrap(): void {
     input.endFrame(); // 物理帧末清除按键边沿
   });
   loop.onRender((_alpha) => {
-    renderSystem.render(g, VIEW_W, VIEW_H);
+    // 菜单状态由 DOM 层渲染；战斗状态走分层渲染
+    if (sm.currentName === 'battle') {
+      renderSystem.render(g, VIEW_W, VIEW_H);
+    } else {
+      g.fillStyle = '#1a1a1f';
+      g.fillRect(0, 0, VIEW_W, VIEW_H);
+    }
   });
 
-  sm.transition('battle', ctx);
+  sm.transition('menu', ctx);
   loop.start();
 
   // 调试出口（devtools 可干预）
@@ -91,7 +96,10 @@ function bootstrap(): void {
     camera,
     particles,
     renderSystem,
+    menu,
+    battle,
   };
 }
 
 bootstrap();
+

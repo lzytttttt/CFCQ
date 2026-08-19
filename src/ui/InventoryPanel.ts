@@ -35,7 +35,14 @@ export class InventoryPanel {
     private readonly overlay: HTMLElement,
     private readonly inventory: Inventory,
     private readonly bladeName: () => string,
+    /** M8：刀具槽点击回调（循环切换刀具） */
+    private onSwitchBlade: () => void = () => {},
   ) {}
+
+  /** 当前刀具名（槽位刷新用） */
+  private bladeNameText(): string {
+    return this.bladeName();
+  }
 
   toggle(): void {
     if (this.visible) this.hide();
@@ -144,7 +151,15 @@ export class InventoryPanel {
       </div>
     `;
 
-    // 事件绑定
+    // 事件绑定：刀具槽点击循环切换（M8：Boss 掉刀收集）
+    const bladeSlot = root.querySelector<HTMLElement>('[data-slot="blade"]');
+    bladeSlot?.addEventListener('click', () => {
+      this.onSwitchBlade();
+      // 刷新槽位显示
+      const nameEl = bladeSlot.querySelector('.is-item');
+      if (nameEl) nameEl.textContent = this.bladeName();
+    });
+
     root.querySelectorAll<HTMLElement>('.ib-btn.equip').forEach((btn) => {
       btn.addEventListener('click', () => {
         const uid = Number(btn.dataset.uid);

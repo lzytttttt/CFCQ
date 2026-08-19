@@ -52,6 +52,8 @@ export interface ClashContextFlags {
   foeCombo: boolean;
   /** 玩家持有破刀诀天赋 */
   hasBreakTalent: boolean;
+  /** Boss 技能前摇拼刀窗口（Boss设计 §3.2：胜率 +0.15；M8） */
+  bossWindow?: boolean;
 }
 
 /** 碰撞事件回调（碰撞设计.md §7 ICollisionListener 落地） */
@@ -245,7 +247,7 @@ export class CollisionEngine {
           playerM: bladeMomentum(pb),
           foeM: bladeMomentum(fb),
           counterRotation: flags.counterRotation,
-          timingWindow: fb.justDrawnTime > 0, // 敌刚出刀 0.25s 内
+          timingWindow: fb.justDrawnTime > 0 || (flags.bossWindow ?? false), // 敌刚出刀/Boss 前摇窗口
           foeCombo: flags.foeCombo,
           hasBreakTalent: flags.hasBreakTalent,
         };

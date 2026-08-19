@@ -40,6 +40,7 @@ import { UpgradePicker } from '../player/UpgradePicker';
 import { applyOption, createEmptyMods, type PlayerMods } from '../player/UpgradeEffects';
 import { EquipmentGenerator, type EquipmentItem } from '../equipment/EquipmentGenerator';
 import { Inventory } from '../equipment/Inventory';
+import { emptyStats, type AggregatedStats } from '../equipment/Inventory';
 import { UpgradePanel, injectUpgradePanelStyles } from '../ui/UpgradePanel';
 import { InventoryPanel, injectInventoryStyles } from '../ui/InventoryPanel';
 import type { UpgradeOption } from '../data/upgrades';
@@ -48,6 +49,12 @@ import { RunProgress } from '../rogue/RunProgress';
 import { SaveLoad, type CodexProgress } from '../rogue/SaveLoad';
 import { LEVELS_BY_ID } from '../data/levels';
 import { formatAffix } from '../equipment/EquipmentGenerator';
+import { Boss, type BossHooks } from '../enemy/Boss';
+import { Dialog, injectDialogStyles } from '../ui/Dialog';
+import { chapterOf, ENDINGS } from '../data/story';
+import { BOSSES_BY_LEVEL } from '../data/bosses';
+import type { DialogLine } from '../data/story';
+import { BLADES_BY_ID, STARTER_BLADE_ID, type BladeData } from '../data/blades';
 
 const PLAYER_R = 18; // 转刀机制.md §2.1：角色半径默认 18px
 const HITSTOP_NORMAL = 0.04;
@@ -158,6 +165,41 @@ export class BattleState implements IGameState {
   /** 死亡已存档标记 */
   private deathSaved = false;
 
+  // ---- M9：性能缓存（装备聚合每帧多次遍历 → 脏标记缓存）----
+  private gearCache: AggregatedStats = emptyStats();
+  private gearDirty = true;
+
+  /** 装备聚合（缓存版：背包/穿戴/强化变化时置脏） */
+  private gear(): AggregatedStats {
+    if (this.gearDirty) {
+      this.gearCache = this.inventory.aggregate();
+      this.gearDirty = false;
+    }
+    return this.gearCache;
+  }
+
+  /** M9 平衡：多刀伤害递减（平衡性分析 §6：第2刀 80%、第3刀 60%，防多刀暴击流过强） */
+  private bladeDecayOf(blade?: BladeBody): number {
+    if (!blade || this.playerBlades.length <= 1) return 1;
+    return blade.index === 0 ? 1 : blade.index === 1 ? 0.8 : 0.6;
+  }
+
+  // ---- M8：Boss 与剧情 ----
+  private boss: Boss | null = null;
+  private dialog: Dialog | null = null;
+  /** Boss 掉落刀具光点 */
+  private bossBladeDrops: Array<{ bladeId: string; x: number; y: number }> = [];
+  /** 剧情推进标记 */
+  private storyFlags = { openingPlayed: false, midPlayed: false, preBossPlayed: false, postBossPlayed: false };
+  /** 已收集刀具（id 列表，背包刀具槽循环切换） */
+  private collectedBlades: string[] = [STARTER_BLADE_ID];
+  /** 当前装备刀具索引 */
+  private bladeIndex = 0;
+  /** Boss 毒域区 */
+  private zones: Array<{ x: number; y: number; r: number; time: number; dps: number }> = [];
+  /** 对话暂停 */
+  private pausedForDialog = false;
+
   constructor(
     private readonly loop: GameLoop,
     private readonly camera: Camera,
@@ -175,6 +217,251 @@ export class BattleState implements IGameState {
       width: this.player.bladeWidth,
       omega: this.player.omega,
     });
+  }
+
+  // ============ M8：Boss / 剧情 / 刀具 ============
+
+  /** Boss 对世界的动作回调 */
+  private makeBossHooks(): BossHooks {
+    return {
+      damagePlayer: (amount, source, kind) => {
+        const dmg = this.player.takeDamage(amount, source);
+        if (dmg > 0) {
+          this.damageNumbers.spawn(this.player.pos, dmg, 'player');
+          this.renderSystem.flash('red', kind === 'wave' ? 0.3 : 0.25, 0.25);
+          this.camera.shake(3, 0.2);
+        }
+      },
+      spawnProjectile: (spec, pos, dir, ownerId) => {
+        this.projectiles.push(new Projectile(spec, pos, dir, ownerId));
+      },
+      summonEnemy: (kind, pos, momentumRatio) => {
+        if (kind === 'bloodmonk') {
+          const spec = ENEMIES_BY_ID.get('bloodmonk')!;
+          const e = new Enemy(
+            spec,
+            pos,
+            this.progress.level,
+            this.aiRng.fork(),
+            () => this.idSeq++,
+            this.makeEnemyHooks(),
+          );
+          this.enemies.push(e);
+          this.engine.addTarget(e.target);
+          for (const b of e.blades) this.engine.addBlade(b);
+        } else {
+          // 影分身：1 HP、50% 动量（借用寨刀手数据近似，HP 设 1）
+          const spec = ENEMIES_BY_ID.get('raider')!;
+          const e = new Enemy(
+            spec,
+            pos,
+            this.progress.level,
+            this.aiRng.fork(),
+            () => this.idSeq++,
+            this.makeEnemyHooks(),
+          );
+          (e as unknown as { hpMax: number }).hpMax = 1;
+          (e as unknown as { hp: number }).hp = 1;
+          this.enemies.push(e);
+          this.engine.addTarget(e.target);
+          for (const b of e.blades) {
+            this.engine.addBlade(b);
+            b.omega *= momentumRatio;
+          }
+        }
+      },
+      spawnZone: (pos, radius, duration, dps) => {
+        this.zones.push({ x: pos.x, y: pos.y, r: radius, time: duration, dps });
+      },
+      onStageChange: (stage) => {
+        this.renderSystem.flash('white', 0.5, 0.4);
+        this.camera.shake(6, 0.35);
+        // 阶段台词（天绝）
+        const story = chapterOf(this.progress.level);
+        const line = story?.bossStageLines?.[stage];
+        if (line && this.dialog && !this.pausedForDialog) {
+          this.pausedForDialog = true;
+          this.dialog.play(line, () => {
+            this.pausedForDialog = false;
+          });
+        }
+      },
+      fx: (kind, pos) => {
+        if (kind === 'slam') {
+          this.camera.shake(6, 0.3);
+          this.particles.kill(pos);
+        } else if (kind === 'storm') {
+          this.camera.shake(8, 0.5);
+          this.renderSystem.flash('white', 0.3, 0.3);
+        } else if (kind === 'rain') {
+          this.renderSystem.flash('gold', 0.3, 0.3);
+        }
+      },
+    };
+  }
+
+  /** 播放剧情段落（对话期间暂停） */
+  private playStory(section: 'opening' | 'midProgress' | 'postBoss' | 'ending' | 'endingA' | 'endingB'): void {
+    const story = chapterOf(this.progress.level);
+    if (!story || !this.dialog) return;
+    let lines: readonly DialogLine[] =
+      story[section === 'endingA' || section === 'endingB' ? 'ending' : section] ?? [];
+    if (section === 'endingA') lines = ENDINGS.A;
+    if (section === 'endingB') lines = ENDINGS.B;
+    if (!lines || lines.length === 0) return;
+    this.pausedForDialog = true;
+    this.dialog.play(lines, () => {
+      this.pausedForDialog = false;
+    });
+  }
+
+  /** 换装刀具（背包刀具槽循环切换） */
+  private switchBlade(): void {
+    if (this.collectedBlades.length <= 1) return;
+    this.bladeIndex = (this.bladeIndex + 1) % this.collectedBlades.length;
+    this.equipBlade(this.collectedBlades[this.bladeIndex]!);
+  }
+
+  /** 应用刀具数据到玩家 */
+  private equipBlade(bladeId: string): void {
+    const data = BLADES_BY_ID.get(bladeId);
+    if (!data) return;
+    this.player.blade = {
+      name: data.name,
+      quality: data.quality,
+      baseDamage: data.baseDamage,
+      length: data.length,
+      width: data.width,
+      speedMod: data.speedMod,
+    };
+    this.codex.blades.add(bladeId);
+    this.renderSystem.flash('gold', 0.25, 0.2);
+  }
+
+  /** Boss 击败结算（对话 + 掉刀 + 通关） */
+  private onBossDefeated(): void {
+    const bossSpec = this.boss!.spec;
+    const story = chapterOf(this.progress.level);
+    // Boss 掉刀具光点（剧情刀）
+    for (const bladeId of bossSpec.rewardBlades) {
+      if (!this.collectedBlades.includes(bladeId)) {
+        this.collectedBlades.push(bladeId);
+      }
+      this.drops.push({
+        item: this.gearGen.generateWithQuality('accessory', this.progress.level, 'purple', this.aiRng),
+        x: this.boss!.pos.x + 60,
+        y: this.boss!.pos.y,
+        glow: 0,
+      });
+    }
+    // Boss 掉落刀具光点（专用渲染：刀形光点由 drops 统一，拾取即收集）
+    this.bossBladeDrops.push({ bladeId: bossSpec.rewardBlades[0]!, x: this.boss!.pos.x - 60, y: this.boss!.pos.y });
+    // 移除 Boss 刀体
+    for (const b of this.boss!.blades) this.engine.removeBlade(b);
+    this.engine.removeTarget(this.boss!.target);
+
+    // 战后对话 → 开门
+    const openDoor = () => {
+      this.doorOpen = true;
+      this.renderSystem.flash('gold', 0.3, 0.4);
+    };
+    if (story && !this.storyFlags.postBossPlayed && this.dialog) {
+      this.storyFlags.postBossPlayed = true;
+      this.pausedForDialog = true;
+      this.dialog.play(story.postBoss, () => {
+        this.pausedForDialog = false;
+        openDoor();
+      });
+    } else {
+      openDoor();
+    }
+  }
+
+  /** 关卡通关（M8 版：Boss 击败后过门触发，含结局） */
+  private onLevelClearM8(): void {
+    const lv = this.progress.level;
+    const reward = this.progress.levelClearReward(lv);
+    this.player.addKillExp(reward.exp);
+    this.inventory.scrap += reward.scrap;
+
+    if (lv >= 6) {
+      // 第 6 关通关 → 双结局
+      this.codex.bestLevel = Math.max(this.codex.bestLevel, 6);
+      const hasStarter = this.collectedBlades[this.bladeIndex] === STARTER_BLADE_ID;
+      this.hud.victory = true;
+      SaveLoad.save(this.codex, null);
+      // 战后 → 结局链式播放
+      const story = chapterOf(6);
+      const ending = hasStarter ? ENDINGS.B : ENDINGS.A;
+      if (story && this.dialog) {
+        this.pausedForDialog = true;
+        this.dialog.play([...story.postBoss, ...ending], () => {
+          this.pausedForDialog = false;
+          // 觉醒结局：铁匠刀升华为藏锋·无名
+          if (hasStarter) {
+            this.collectedBlades.push('cangfeng');
+            this.bladeIndex = this.collectedBlades.length - 1;
+            this.equipBlade('cangfeng');
+          }
+        });
+      }
+      return;
+    }
+    // 非终关：结尾对话 → 下一关
+    const advance = () => {
+      this.progress.advanceLevel();
+      this.plan = this.levelGen.generate(this.progress.level);
+      this.storyFlags = { openingPlayed: false, midPlayed: false, preBossPlayed: false, postBossPlayed: false };
+      this.enterRoom(0);
+      this.playStory('opening');
+    };
+    const story = chapterOf(lv);
+    if (story && this.dialog) {
+      this.pausedForDialog = true;
+      this.dialog.play(story.ending, () => {
+        this.pausedForDialog = false;
+        advance();
+      });
+    } else {
+      advance();
+    }
+  }
+
+  private updateBossAndZones(dt: number): void {
+    // Boss tick
+    if (this.boss) {
+      this.boss.tick(dt, this.player.pos, DEFAULT_WORLD_W, DEFAULT_WORLD_H);
+      for (const b of this.boss.blades) {
+        if (b.active && this.boss.alive) {
+          advanceBlade(b, dt);
+          this.trailOf(b).push(b.angle);
+        }
+      }
+      if (!this.boss.alive) {
+        this.onBossDefeated();
+        this.boss = null;
+      }
+    }
+    // 毒域
+    for (const z of this.zones) {
+      z.time -= dt;
+      const d = Math.hypot(this.player.pos.x - z.x, this.player.pos.y - z.y);
+      if (d < z.r) {
+        this.player.takeDamage(Math.max(1, Math.round(z.dps * dt)), '毒域');
+      }
+    }
+    this.zones = this.zones.filter((z) => z.time > 0);
+    // Boss 刀具光点拾取（拾取即装备并同步索引）
+    for (const d of this.bossBladeDrops) {
+      const dist = Math.hypot(this.player.pos.x - d.x, this.player.pos.y - d.y);
+      if (dist < 40) {
+        this.equipBlade(d.bladeId);
+        const idx = this.collectedBlades.indexOf(d.bladeId);
+        if (idx >= 0) this.bladeIndex = idx;
+        d.x = -9999;
+      }
+    }
+    this.bossBladeDrops = this.bossBladeDrops.filter((d) => d.x > -999);
   }
 
   /** 敌人对世界的动作回调（EnemyHooks 落地） */
@@ -242,9 +529,10 @@ export class BattleState implements IGameState {
     this.plan = this.levelGen.generate(this.progress.level);
     this.enterRoom(0);
 
-    // M6：DOM UI 初始化（升级面板/背包）
+    // M6：DOM UI 初始化（升级面板/背包）；M8：对话
     injectUpgradePanelStyles();
     injectInventoryStyles();
+    injectDialogStyles();
     const overlay = document.getElementById('ui-overlay');
     if (overlay) {
       this.upgradePanel ??= new UpgradePanel(overlay);
@@ -252,7 +540,15 @@ export class BattleState implements IGameState {
         overlay,
         this.inventory,
         () => this.player.blade.name,
+        () => this.switchBlade(),
       );
+      this.dialog ??= new Dialog(overlay);
+    }
+    // 剧情标记重置 + 开场对话
+    this.storyFlags = { openingPlayed: false, midPlayed: false, preBossPlayed: false, postBossPlayed: false };
+    this.zones = [];
+    this.playStory('opening');
+    if (overlay) {
       // 背包按钮（右下角常驻，点击开关背包；点击后 blur 防空格键误触发）
       this.invToggleBtn?.remove();
       const btn = document.createElement('button');
@@ -269,7 +565,7 @@ export class BattleState implements IGameState {
     this.engine.setListener({
       onBladeHitEnemy: (blade, target, hitPoint) => {
         if (blade.owner === 'player') {
-          this.onPlayerHit(target, hitPoint);
+          this.onPlayerHit(target, hitPoint, blade);
         } else {
           this.onEnemyBladeHitPlayer(blade, target, hitPoint);
         }
@@ -350,12 +646,13 @@ export class BattleState implements IGameState {
       this.toggleInventory();
     }
 
-    // 升级/背包暂停（面板期间冻结战斗，UI 由 DOM 层驱动）
-    if (this.pausedForUpgrade || this.pausedForInventory) {
+    // 升级/背包/对话暂停（面板期间冻结战斗，UI 由 DOM 层驱动）
+    if (this.pausedForUpgrade || this.pausedForInventory || this.pausedForDialog) {
       this.camera.update(dt);
       this.particles.update(dt);
       this.damageNumbers.update(dt);
       this.renderSystem.update(dt);
+      this.dialog?.tick();
       return;
     }
 
@@ -390,8 +687,8 @@ export class BattleState implements IGameState {
     this.player.tick(dt);
     this.player.move(ctx.input.getAxis(), dt, ctx.world.width, ctx.world.height, PLAYER_R);
 
-    // 玩家刀体参数同步（等级成长 + 升级修正 + 装备词条实时生效）
-    const gear = this.inventory.aggregate();
+    // 玩家刀体参数同步（等级成长 + 升级修正 + 装备词条实时生效，M9 缓存）
+    const gear = this.gear();
     const omegaMod = this.player.omega * (1 + this.mods.spinSpeed + gear.spinSpeed);
     const lenMod = this.player.bladeLength * (1 + this.mods.radius + gear.radius + gear.bladeLen);
     const widMod = this.player.bladeWidth * (1 + gear.bladeWid);
@@ -422,17 +719,25 @@ export class BattleState implements IGameState {
     // 弹道更新与结算
     this.updateProjectiles(dt);
 
+    // Boss / 毒域 / Boss 掉刀
+    this.updateBossAndZones(dt);
+
+    // 对话逐字打印
+    this.dialog?.tick();
+
     // 装备掉落光点更新与拾取
     this.updateDrops(dt);
 
     // 连击窗口时钟
     this.combo.tick(dt);
 
-    // 碰撞步进（M6：逆刃相向修正 + 破刀诀天赋）
+    // 碰撞步进（M6：逆刃相向修正 + 破刀诀天赋；M8：Boss 拼刀窗口 +0.15）
     this.engine.step(dt, {
       counterRotation: this.reverseEdgeOn,
       foeCombo: false,
       hasBreakTalent: this.player.hasBreakTalent,
+      /** Boss 技能前摇拼刀窗口（Boss设计 §3.2：胜率 +0.15） */
+      bossWindow: this.boss?.clashWindow ?? false,
     });
 
     // 相机 / 粒子 / 数字
@@ -535,6 +840,7 @@ export class BattleState implements IGameState {
     if (this.inventoryPanel.visible) {
       this.inventoryPanel.hide();
       this.pausedForInventory = false;
+      this.gearDirty = true; // M9：背包变化置脏
       this.applyModsToCombat(); // 穿戴变化立即生效
     } else {
       this.inventoryPanel.show();
@@ -590,20 +896,26 @@ export class BattleState implements IGameState {
 
   // ============ 战斗结算 ============
 
-  private onPlayerHit(target: { id: number; pos: Vec2 }, hitPoint: Vec2): void {
+  private onPlayerHit(target: { id: number; pos: Vec2 }, hitPoint: Vec2, blade?: BladeBody): void {
+    // Boss 受击路径
+    if (this.boss && this.boss.target.id === target.id) {
+      this.onPlayerHitBoss(hitPoint, blade);
+      return;
+    }
     const enemy = this.enemies.find((e) => e.target.id === target.id);
     if (!enemy || !enemy.alive) return;
-    const gear = this.inventory.aggregate();
+    const gear = this.gear();
 
     const combo = this.combo.register(target.id, this.player.comboCap + this.mods.comboCapBonus);
     this.hud.setCombo(combo);
 
     const crit = this.critChance > 0 && this.aiRng.chance(this.critChance);
-    // 连击伤害加成（怒涛连斩 +0.1/层叠加到基础连击倍率）与暴起/狂战/装备
+    // 连击伤害加成（怒涛连斩 +0.1/层叠加到基础连击倍率）与暴起/狂战/装备 + 多刀递减（M9）
     const comboDmgBonus =
       (COMBO_MULTIPLIER[Math.min(combo, 5) - 1]! + this.mods.comboDamageBonus + gear.comboDamage) *
       (combo >= 3 ? 1 + this.mods.surgeDamage : 1) *
-      (this.player.hp / this.player.hpMax < 0.4 ? 1 + this.mods.berserkDamage : 1);
+      (this.player.hp / this.player.hpMax < 0.4 ? 1 + this.mods.berserkDamage : 1) *
+      this.bladeDecayOf(blade);
     const dmg = computeHitDamage({
       bladeBaseDamage: this.player.blade.baseDamage,
       bladeLevelBonus: this.player.bladeLevelDamageBonus,
@@ -671,6 +983,16 @@ export class BattleState implements IGameState {
     _target: { id: number },
     _hitPoint: Vec2,
   ): void {
+    // Boss 刀体命中玩家
+    if (this.boss && this.boss.blades.includes(blade)) {
+      const dmg = this.player.takeDamage(Math.round(this.boss.damageOf(0)), this.boss.spec.name);
+      if (dmg > 0) {
+        this.damageNumbers.spawn(this.player.pos, dmg, 'player');
+        this.renderSystem.flash('red', 0.25, 0.25);
+        this.camera.shake(3, 0.2);
+      }
+      return;
+    }
     // 敌方刀体命中玩家（blade.ownerId 即敌人 id）
     const enemy = this.enemies.find((e) => e.blades.includes(blade));
     if (!enemy || !enemy.alive) return;
@@ -679,6 +1001,54 @@ export class BattleState implements IGameState {
       this.damageNumbers.spawn(this.player.pos, dmg, 'player');
       this.renderSystem.flash('red', 0.25, 0.25);
       this.camera.shake(3, 0.2);
+    }
+  }
+
+  /** 玩家刀体命中 Boss */
+  private onPlayerHitBoss(hitPoint: Vec2, blade?: BladeBody): void {
+    const boss = this.boss!;
+    if (!boss.alive) return;
+    const gear = this.gear();
+    const combo = this.combo.register(boss.target.id, this.player.comboCap + this.mods.comboCapBonus);
+    this.hud.setCombo(combo);
+    const crit = this.critChance > 0 && this.aiRng.chance(this.critChance);
+    const comboDmgBonus =
+      (COMBO_MULTIPLIER[Math.min(combo, 5) - 1]! + this.mods.comboDamageBonus + gear.comboDamage) *
+      (combo >= 3 ? 1 + this.mods.surgeDamage : 1);
+    // Boss 破防窗口受伤 +100%（天绝阶段 4 连拼 3 次触发）
+    const vulnerableMult = boss.vulnerable ? 2 : 1;
+    // M9 平衡：多刀伤害递减（平衡性分析 §6 预案：第2刀 80%、第3刀 60%）
+    const bladeDecay = this.bladeDecayOf(blade);
+    const dmg = computeHitDamage({
+      bladeBaseDamage: this.player.blade.baseDamage,
+      bladeLevelBonus: this.player.bladeLevelDamageBonus,
+      gearAtkBonus: gear.atk,
+      techniqueFactor: this.player.techFactor,
+      combo,
+      crit,
+      critMultiplier: 1.5 + gear.critDamage,
+      enemyDef: 8,
+      targetBrokenGuard: boss.brokenGuard > 0,
+      momentumBuff: this.player.momentumBuffTime > 0,
+      comboMultiplierOverride: comboDmgBonus * vulnerableMult * bladeDecay,
+    });
+    const dir = normalize(sub(hitPoint, this.player.pos));
+    const died = boss.applyHit(dmg, dir, 0);
+    this.damageNumbers.spawn(
+      boss.pos,
+      dmg,
+      boss.vulnerable ? 'breakGuard' : crit ? 'crit' : 'normal',
+    );
+    this.particles.hit(hitPoint, this.playerBlade.angle);
+    this.camera.shake(1, 0.08);
+    this.hitstop = died ? HITSTOP_KILL : HITSTOP_NORMAL;
+    if (died) {
+      this.hud.kills++;
+      this.codex.totalKills++;
+      this.player.addKillExp(Math.round(8 * 15 * (1 + 0.1 * (this.progress.level - 1)))); // Boss EXP = 小怪×15
+      this.combo.clear(boss.target.id);
+      this.particles.kill(boss.pos);
+      this.camera.shake(5, 0.35);
     }
   }
 
@@ -694,8 +1064,9 @@ export class BattleState implements IGameState {
     this.renderSystem.flash('white', 0.45, 0.18);
     this.camera.shake(5, 0.25);
 
-    const gear = this.inventory.aggregate();
+    const gear = this.gear();
     const enemy = this.enemies.find((e) => e.blades.includes(fb));
+    const boss = this.boss && this.boss.blades.includes(fb) ? this.boss : null;
     void pb;
 
     // 应用结果
@@ -703,6 +1074,26 @@ export class BattleState implements IGameState {
     if (result.disablePlayerBlade > 0) {
       for (const b of this.playerBlades) b.active = false;
       this.player.stun = Math.max(this.player.stun, result.disablePlayerBlade);
+    }
+    // Boss 拼刀结果：打断技能 + 僵直 + 刀光雨计数
+    if (boss) {
+      if (result.stunFoe > 0) boss.stun = Math.max(boss.stun, result.stunFoe);
+      if (result.disableFoeBlade > 0) boss.bladeDisabled = Math.max(boss.bladeDisabled, result.disableFoeBlade);
+      if (result.outcome === 'win' || result.outcome === 'break') {
+        boss.brokenGuard = 1.5;
+        boss.interruptByClash(); // 拼刀打断冲锋/重击（Boss设计 §4.1/§4.3）
+        const clashDmg = result.clashDamage > 0
+          ? Math.round(result.clashDamage * (1 + gear.clashDamage))
+          : 0;
+        if (clashDmg > 0) {
+          boss.applyHit(clashDmg, vec2(0, 0), 0);
+          this.damageNumbers.spawn(boss.pos, clashDmg, 'breakGuard');
+        }
+        // 天绝阶段 4：刀光雨连拼 3 次破防
+        if (boss.spec.id === 'tianjue' && boss.stage === 4) {
+          boss.registerRainClash();
+        }
+      }
     }
     if (enemy) {
       if (result.stunFoe > 0) enemy.stun = Math.max(enemy.stun, result.stunFoe);
@@ -724,10 +1115,13 @@ export class BattleState implements IGameState {
       }
     }
 
-    // 连胜计数 → 刀势如虹（连续 3 次胜，需 mods.bladeAura 解锁；破军4件阈值减半由套装效果 M9 打磨）
+    // 连胜计数 → 刀势如虹（连续 3 次胜；M9：破军 4 件阈值减半连 2 次即触发——套装与词条 §3.5）
     if (result.outcome === 'win' || result.outcome === 'break') {
+      this.hud.clashWins++;
       this.clashWinStreak++;
-      if (this.mods.bladeAura && this.clashWinStreak >= 3) {
+      const warlord4 = this.gear().activeSets.some((s) => s.set === 'warlord' && s.pieces === 4);
+      const threshold = warlord4 ? 2 : 3;
+      if (this.mods.bladeAura && this.clashWinStreak >= threshold) {
         this.player.momentumBuffTime = 8; // 刀势如虹 8s
         this.clashWinStreak = 0;
         this.particles.levelUp(this.player.pos);
@@ -742,6 +1136,10 @@ export class BattleState implements IGameState {
     if (result.outcome === 'break') {
       this.particles.bladeBreak(hitPoint);
       this.camera.shake(8, 0.3);
+      // M9 打磨：破刀慢镜头（渲染管线.md §5：破刀 8px + 慢镜头 0.3s 全场暗化）
+      this.hitstop = 0.3;
+      this.renderSystem.flash('white', 0.8, 0.12);
+      this.renderSystem.flash('black', 0.5, 0.3);
     }
   }
 
@@ -755,6 +1153,17 @@ export class BattleState implements IGameState {
     this.renderSystem.clearLayer(RenderLayer.Enemies);
     this.renderSystem.addLayer(RenderLayer.Enemies, (g) => {
       g2.drawEnemies(g);
+      g2.drawBoss(g);
+      // 毒域（紫色半透明圆）
+      for (const z of g2.zones) {
+        g.fillStyle = `rgba(122, 58, 142, ${Math.min(0.35, z.time * 0.2)})`;
+        g.beginPath();
+        g.arc(z.x, z.y, z.r, 0, Math.PI * 2);
+        g.fill();
+        g.strokeStyle = '#9b6fd4';
+        g.lineWidth = 2;
+        g.stroke();
+      }
       for (const p of g2.projectiles) p.draw(g);
       g2.drawPlayer(g);
     });
@@ -822,6 +1231,43 @@ export class BattleState implements IGameState {
         g.strokeStyle = '#3a3a48';
         g.lineWidth = 3;
         g.strokeRect(d.x, d.y - d.h / 2, d.w, d.h);
+      }
+
+      // Boss 掉落刀具光点（鎏金刀形）
+      for (const bd of g2.bossBladeDrops) {
+        const data = BLADES_BY_ID.get(bd.bladeId);
+        if (!data) continue;
+        const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 280);
+        const grad = g.createRadialGradient(bd.x, bd.y, 0, bd.x, bd.y, 34);
+        grad.addColorStop(0, `rgba(246,195,68,${(0.55 * pulse).toFixed(2)})`);
+        grad.addColorStop(1, 'rgba(246,195,68,0)');
+        g.fillStyle = grad;
+        g.beginPath();
+        g.arc(bd.x, bd.y, 34, 0, Math.PI * 2);
+        g.fill();
+        // 刀形（旋转微动）
+        g.save();
+        g.translate(bd.x, bd.y);
+        g.rotate(Math.sin(performance.now() / 500) * 0.3);
+        g.strokeStyle = '#f6c344';
+        g.lineWidth = 4;
+        g.lineCap = 'round';
+        g.beginPath();
+        g.moveTo(-18, 0);
+        g.lineTo(18, 0);
+        g.stroke();
+        g.lineWidth = 3;
+        g.beginPath();
+        g.moveTo(-18, 0);
+        g.lineTo(-26, 0);
+        g.stroke();
+        g.restore();
+        // 名字标签
+        g.font = '700 15px "Alimama ShuHeiTi", sans-serif';
+        g.textAlign = 'center';
+        g.fillStyle = '#f6c344';
+        g.fillText(`【${data.name}】`, bd.x, bd.y + 48);
+        g.textAlign = 'left';
       }
 
       // POI（宝箱/休息/事件）
@@ -912,6 +1358,7 @@ export class BattleState implements IGameState {
     this.renderSystem.addLayer(RenderLayer.UI, (g) => {
       g2.damageNumbers.draw(g);
       g2.hud.draw(g, g2.player);
+      g2.drawBossHpBar(g);
     });
   }
 
@@ -956,6 +1403,8 @@ export class BattleState implements IGameState {
     this.waveStarted = false;
     this.shopGoods = [];
     this.roomPoi = null;
+    this.boss = null;
+    this.zones = [];
 
     // 重置碰撞引擎（保留玩家刀体由后文重注册）
     for (const b of this.playerBlades.slice(1)) this.engine.removeBlade(b);
@@ -1033,11 +1482,40 @@ export class BattleState implements IGameState {
         this.roomPoi = { x: room.poi!.x, y: room.poi!.y, kind: 'event', used: false };
         this.doorOpen = true;
         break;
-      case 'boss':
-        // M7：精英替代 Boss（属性 ×1.5 ×2 只）；M8 替换正式 Boss
+      case 'boss': {
+        // M8：正式 Boss 战（战前对话 → Boss 登场）
         this.wavesTotalInRoom = 1;
-        this.spawnRoomWave(room, [cfg.elite ?? 'banditlord'], 'bossSub');
+        this.waveStarted = true;
+        const bossSpec = BOSSES_BY_LEVEL.get(this.progress.level)!;
+        const bossPos = vec2(DEFAULT_WORLD_W / 2, 400);
+        const story = chapterOf(this.progress.level);
+        const startFight = () => {
+          if (!this.boss) {
+            this.boss = new Boss(
+              bossSpec,
+              bossPos,
+              this.progress.level,
+              this.aiRng.fork(),
+              () => this.idSeq++,
+              this.makeBossHooks(),
+            );
+            this.engine.addTarget(this.boss.target);
+            for (const b of this.boss.blades) this.engine.addBlade(b);
+            this.codex.bosses.add(bossSpec.id);
+          }
+        };
+        if (story && !this.storyFlags.preBossPlayed && this.dialog) {
+          this.storyFlags.preBossPlayed = true;
+          this.pausedForDialog = true;
+          this.dialog.play(story.preBoss, () => {
+            this.pausedForDialog = false;
+            startFight();
+          });
+        } else {
+          startFight();
+        }
         break;
+      }
     }
     this.hud.wave = 1;
   }
@@ -1181,9 +1659,19 @@ export class BattleState implements IGameState {
         this.progress.roomIndex++;
         if (this.progress.roomIndex >= this.plan.rooms.length) {
           // 通关：奖励 + 下一关（或胜利）
-          this.onLevelClear();
+          this.onLevelClearM8();
         } else {
           this.enterRoom(this.progress.roomIndex);
+          // 中段剧情（第 3 个战斗房后触发一次）
+          const roomKind = this.plan.rooms[this.progress.roomIndex]?.kind;
+          if (
+            roomKind === 'battle' &&
+            this.progress.roomIndex >= 3 &&
+            !this.storyFlags.midPlayed
+          ) {
+            this.storyFlags.midPlayed = true;
+            this.playStory('midProgress');
+          }
         }
       }
     }
@@ -1274,6 +1762,7 @@ export class BattleState implements IGameState {
       if (nearest && this.progress.spendGold(nearest.price)) {
         nearest.sold = true;
         this.inventory.addItem(nearest.item);
+        this.gearDirty = true; // M9：购买置脏
         this.particles.levelUp(vec2(nearest.x, nearest.y));
         this.renderSystem.flash('gold', 0.2, 0.2);
       }
@@ -1323,6 +1812,78 @@ export class BattleState implements IGameState {
         g.stroke();
       }
     }
+  }
+
+  /** Boss 绘制（大圆 + 阶段色 + 蓄力预警 + 血条分段） */
+  private drawBoss(g: CanvasRenderingContext2D): void {
+    const b = this.boss;
+    if (!b || !b.alive) return;
+    // 无敌（阶段切换/风暴）半透明
+    if (b.invulnerable) g.globalAlpha = 0.55;
+    g.fillStyle = b.hitFlash > 0 ? '#ffffff' : '#7a2a3a';
+    g.strokeStyle = '#1a1a1f';
+    g.lineWidth = 5;
+    g.beginPath();
+    g.arc(b.pos.x, b.pos.y, b.target.r, 0, Math.PI * 2);
+    g.fill();
+    g.stroke();
+    // 蓄力红光
+    if (b.clashWindow) {
+      g.strokeStyle = '#e8763a';
+      g.lineWidth = 4;
+      g.beginPath();
+      g.arc(b.pos.x, b.pos.y, b.target.r + 8, 0, Math.PI * 2);
+      g.stroke();
+    }
+    // 破防标记
+    if (b.vulnerable) {
+      g.strokeStyle = '#f6c344';
+      g.lineWidth = 4;
+      g.beginPath();
+      g.arc(b.pos.x, b.pos.y, b.target.r + 14, 0, Math.PI * 2);
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
+
+  /** Boss 血条（顶部通栏分段） */
+  private drawBossHpBar(g: CanvasRenderingContext2D): void {
+    const b = this.boss;
+    if (!b || !b.alive) return;
+    const w = 800;
+    const x = (VIEW_W - w) / 2;
+    const y = 30;
+    // 底
+    g.fillStyle = 'rgba(26,26,31,0.8)';
+    g.fillRect(x - 4, y - 4, w + 8, 26);
+    // 血
+    const ratio = b.hp / b.hpMax;
+    const grad = g.createLinearGradient(x, 0, x + w, 0);
+    grad.addColorStop(0, '#8e2418');
+    grad.addColorStop(1, '#c0392b');
+    g.fillStyle = grad;
+    g.fillRect(x, y, w * ratio, 18);
+    // 阶段分段线
+    g.strokeStyle = '#d4a853';
+    g.lineWidth = 2;
+    for (const st of b.spec.stages) {
+      if (st.hpTo <= 0) continue;
+      const lx = x + w * st.hpTo;
+      g.beginPath();
+      g.moveTo(lx, y);
+      g.lineTo(lx, y + 18);
+      g.stroke();
+    }
+    // 名字与阶段
+    g.font = '700 16px "Alimama ShuHeiTi", "Noto Sans SC", sans-serif';
+    g.fillStyle = '#f5ede0';
+    g.textAlign = 'center';
+    g.fillText(
+      `${b.spec.title}·${b.spec.name}   阶段 ${b.stage}/${b.spec.stages.length}`,
+      VIEW_W / 2,
+      y + 44,
+    );
+    g.textAlign = 'left';
   }
 
   /** 玩家绘制：朱红圆角方块 + 黑描边 + 无敌帧闪烁 */

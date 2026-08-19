@@ -30,21 +30,20 @@ export enum RenderLayer {
 
 export type LayerRenderer = (g: CanvasRenderingContext2D) => void;
 
-/** 全屏闪光颜色（白闪为拼刀反馈主色） */
-export type FlashColor = 'white' | 'red' | 'gold';
+/** 全屏闪光颜色（白闪为拼刀反馈主色；black 为慢镜头全场暗化） */
+export type FlashColor = 'white' | 'red' | 'gold' | 'black';
 
 const FLASH_RGB: Record<FlashColor, string> = {
   white: '255, 255, 255',
   red: '192, 57, 43',
   gold: '212, 168, 83',
+  black: '10, 10, 14',
 };
 
 export class RenderSystem {
   private layers = new Map<RenderLayer, LayerRenderer[]>();
-  private flashTime = 0;
-  private flashDuration = 0;
-  private flashAlphaMax = 0;
-  private flashColor: FlashColor = 'white';
+  /** M9：闪光叠加队列（破刀白闪+暗化并行） */
+  private flashQueue: Array<{ color: FlashColor; alpha: number; duration: number; time: number }> = [];
 
   constructor(public readonly camera: Camera) {}
 
@@ -61,21 +60,24 @@ export class RenderSystem {
     this.layers.delete(layer);
   }
 
-  /** 触发全屏闪光（拼刀白闪 / 受击红晕） */
+  /** 触发全屏闪光（拼刀白闪 / 受击红晕；可叠加） */
   flash(color: FlashColor, alpha: number, duration: number): void {
-    this.flashColor = color;
-    this.flashAlphaMax = alpha;
-    this.flashDuration = this.flashTime = duration;
+    this.flashQueue.push({ color, alpha, duration, time: duration });
+    // 上限防叠加爆表
+    if (this.flashQueue.length > 4) this.flashQueue.shift();
   }
 
   /** 每物理帧更新（闪光衰减） */
   update(dt: number): void {
-    if (this.flashTime > 0) this.flashTime = Math.max(0, this.flashTime - dt);
+    for (const f of this.flashQueue) {
+      f.time = Math.max(0, f.time - dt);
+    }
+    this.flashQueue = this.flashQueue.filter((f) => f.time > 0);
   }
 
   /** 是否处于闪光中 */
   get flashing(): boolean {
-    return this.flashTime > 0;
+    return this.flashQueue.length > 0;
   }
 
   /**
@@ -101,11 +103,11 @@ export class RenderSystem {
     // ---- UI 层（屏幕坐标） ----
     this.drawLayer(g, RenderLayer.UI);
 
-    // ---- 全屏闪光叠加 ----
-    if (this.flashing) {
-      const t = this.flashTime / this.flashDuration; // 1 → 0
-      const alpha = this.flashAlphaMax * t;
-      g.fillStyle = `rgba(${FLASH_RGB[this.flashColor]}, ${alpha.toFixed(3)})`;
+    // ---- 全屏闪光叠加（M9 队列版：多个闪光并行绘制） ----
+    for (const f of this.flashQueue) {
+      const t = f.time / f.duration; // 1 → 0
+      const alpha = f.alpha * t;
+      g.fillStyle = `rgba(${FLASH_RGB[f.color]}, ${alpha.toFixed(3)})`;
       g.fillRect(0, 0, viewW, viewH);
     }
   }

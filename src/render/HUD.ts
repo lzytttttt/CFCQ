@@ -26,10 +26,14 @@ export class HUD {
   /** 关卡/房间/金币（M7 Rogue 流程） */
   levelInfo = '';
   gold = 0;
+  /** 结算统计（M9：拼刀胜率/最高连击/到达关卡） */
+  clashWins = 0;
+  maxCombo = 0;
 
   setCombo(combo: number): void {
     if (combo > this.lastCombo) this.comboFlash = 0.5;
     this.lastCombo = combo;
+    this.maxCombo = Math.max(this.maxCombo, combo);
   }
 
   tick(dt: number): void {
@@ -105,35 +109,90 @@ export class HUD {
       g.fillRect(0, 0, VIEW_W, VIEW_H);
     }
 
-    // ---- 胜利覆盖层（M7 简易版；M8 正式结局演出） ----
+    // ---- 胜利覆盖层（M9：正式结算 Build 摘要，设计方案 §UI-6） ----
     if (this.victory) {
-      g.fillStyle = 'rgba(26, 26, 31, 0.75)';
+      g.fillStyle = 'rgba(26, 26, 31, 0.82)';
       g.fillRect(0, 0, VIEW_W, VIEW_H);
       g.textAlign = 'center';
       g.font = font(72, 900);
       g.lineWidth = 8;
       g.strokeStyle = C.ink;
-      g.strokeText('武林问鼎 · 出鞘!', VIEW_W / 2, VIEW_H / 2 - 30);
+      g.strokeText('武林问鼎 · 出鞘!', VIEW_W / 2, VIEW_H / 2 - 130);
       g.fillStyle = C.gold;
-      g.fillText('武林问鼎 · 出鞘!', VIEW_W / 2, VIEW_H / 2 - 30);
-      g.font = font(22, 400);
-      g.fillStyle = C.paper;
-      g.fillText(`击杀 ${this.kills} · 图鉴进度已保存（正式结局演出 M8 交付）`, VIEW_W / 2, VIEW_H / 2 + 40);
+      g.fillText('武林问鼎 · 出鞘!', VIEW_W / 2, VIEW_H / 2 - 130);
+      // Build 摘要卡
+      const stats: Array<[string, string]> = [
+        ['本局击杀', String(this.kills)],
+        ['拼刀次数', String(this.clashCount)],
+        ['拼刀胜率', `${this.clashCount > 0 ? Math.round((this.clashWins / this.clashCount) * 100) : 0}%`],
+        ['最高连击', String(this.maxCombo)],
+        ['到达关卡', this.levelInfo || '—'],
+      ];
+      const cardW = 560, cardH = 60 * stats.length + 40;
+      const cardX = VIEW_W / 2 - cardW / 2, cardY = VIEW_H / 2 - 60;
+      g.fillStyle = 'rgba(35,35,48,0.9)';
+      g.strokeStyle = '#d4a85366';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.roundRect(cardX, cardY, cardW, cardH, 14);
+      g.fill();
+      g.stroke();
+      g.font = font(20, 700);
+      stats.forEach(([k, v], i) => {
+        const y = cardY + 46 + i * 60;
+        g.textAlign = 'left';
+        g.fillStyle = '#c9c2b4';
+        g.fillText(k, cardX + 40, y);
+        g.textAlign = 'right';
+        g.fillStyle = C.paper;
+        g.fillText(v, cardX + cardW - 40, y);
+      });
+      g.textAlign = 'center';
+      g.font = font(20, 400);
+      g.fillStyle = '#8a8a96';
+      g.fillText('图鉴进度已保存 · 刷新页面开启新的一局', VIEW_W / 2, cardY + cardH + 46);
       g.textAlign = 'left';
     } else if (this.showDeathOverlay) {
-      // ---- 死亡覆盖层 ----
-      g.fillStyle = 'rgba(26, 26, 31, 0.7)';
+      // ---- 死亡覆盖层（M9：正式结算） ----
+      g.fillStyle = 'rgba(26, 26, 31, 0.78)';
       g.fillRect(0, 0, VIEW_W, VIEW_H);
       g.textAlign = 'center';
       g.font = font(64, 900);
       g.lineWidth = 8;
       g.strokeStyle = C.ink;
-      g.strokeText('力竭倒地', VIEW_W / 2, VIEW_H / 2 - 20);
+      g.strokeText('力竭倒地', VIEW_W / 2, VIEW_H / 2 - 130);
       g.fillStyle = C.red;
-      g.fillText('力竭倒地', VIEW_W / 2, VIEW_H / 2 - 20);
-      g.font = font(22, 400);
-      g.fillStyle = C.paper;
-      g.fillText('图鉴进度已保存 · 刷新页面重开一局（正式结算 M9 交付）', VIEW_W / 2, VIEW_H / 2 + 40);
+      g.fillText('力竭倒地', VIEW_W / 2, VIEW_H / 2 - 130);
+      const stats: Array<[string, string]> = [
+        ['本局击杀', String(this.kills)],
+        ['拼刀次数', String(this.clashCount)],
+        ['拼刀胜率', `${this.clashCount > 0 ? Math.round((this.clashWins / this.clashCount) * 100) : 0}%`],
+        ['最高连击', String(this.maxCombo)],
+        ['止步', this.levelInfo || '—'],
+      ];
+      const cardW = 560, cardH = 60 * stats.length + 40;
+      const cardX = VIEW_W / 2 - cardW / 2, cardY = VIEW_H / 2 - 50;
+      g.fillStyle = 'rgba(35,35,48,0.9)';
+      g.strokeStyle = '#d4a85344';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.roundRect(cardX, cardY, cardW, cardH, 14);
+      g.fill();
+      g.stroke();
+      g.font = font(20, 700);
+      stats.forEach(([k, v], i) => {
+        const y = cardY + 46 + i * 60;
+        g.textAlign = 'left';
+        g.fillStyle = '#c9c2b4';
+        g.fillText(k, cardX + 40, y);
+        g.textAlign = 'right';
+        g.fillStyle = C.paper;
+        g.fillText(v, cardX + cardW - 40, y);
+      });
+      g.textAlign = 'center';
+      g.font = font(20, 400);
+      g.fillStyle = '#8a8a96';
+      g.fillText('图鉴进度已保存 · 刷新页面卷土重来', VIEW_W / 2, cardY + cardH + 46);
       g.textAlign = 'left';
     }
   }
