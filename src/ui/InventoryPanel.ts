@@ -125,7 +125,7 @@ export class InventoryPanel {
         <div class="inv-title-row">
           <span class="inv-title">行囊 · 装备</span>
           <span class="inv-scrap">金属碎片 <b>${inv.scrap}</b></span>
-          <span class="inv-hint">B 键关闭</span>
+          <span class="inv-hint">B 键 / 右下角按钮关闭</span>
         </div>
         <div class="inv-body">
           <div class="inv-left">
@@ -222,6 +222,9 @@ export function injectInventoryStyles(): void {
 .ib-btn{flex:1;background:#2b2b38;border:1px solid #f5ede022;color:#c9c2b4;border-radius:7px;padding:6px;font-size:13px;cursor:pointer;transition:all .15s}
 .ib-btn:hover{color:#f5ede0;border-color:#d4a853}
 .bag-empty{color:#55555f;font-size:14px;text-align:center;padding:40px 0}
+.inv-toggle-btn{position:fixed;right:34px;bottom:30px;pointer-events:auto;z-index:21;background:linear-gradient(160deg,#2b2b38,#1c1c24);border:1.5px solid #d4a85366;color:#f5ede0;border-radius:12px;padding:12px 22px;font-size:17px;font-weight:700;font-family:'Alimama ShuHeiTi','Noto Sans SC','Microsoft YaHei',sans-serif;letter-spacing:2px;cursor:pointer;box-shadow:0 8px 24px -8px #000;transition:all .15s}
+.inv-toggle-btn:hover{border-color:#f6c344;color:#f6c344}
+.inv-toggle-btn:active{transform:translateY(1px)}
   `;
   document.head.appendChild(css);
 }

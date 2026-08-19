@@ -1,7 +1,7 @@
 {
   "name": "cfcq",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.5",
   "type": "module",
   "description": "《藏锋出鞘》—— Rogue 转刀动作游戏（HTML5 Canvas 2D + TypeScript 自研轻量引擎）",
   "scripts": {

@@ -116,6 +116,8 @@ export class BattleState implements IGameState {
   private gearGen!: EquipmentGenerator;
   private upgradePanel: UpgradePanel | null = null;
   private inventoryPanel: InventoryPanel | null = null;
+  /** HUD 背包按钮（右下角常驻，点击开关背包，与 B 键等效） */
+  private invToggleBtn: HTMLElement | null = null;
   /** 升级暂停标志（升级面板期间冻结战斗） */
   private pausedForUpgrade = false;
   /** 背包暂停标志 */
@@ -251,6 +253,18 @@ export class BattleState implements IGameState {
         this.inventory,
         () => this.player.blade.name,
       );
+      // 背包按钮（右下角常驻，点击开关背包；点击后 blur 防空格键误触发）
+      this.invToggleBtn?.remove();
+      const btn = document.createElement('button');
+      btn.className = 'inv-toggle-btn';
+      btn.type = 'button';
+      btn.textContent = '行囊 [B]';
+      btn.addEventListener('click', () => {
+        this.toggleInventory();
+        btn.blur();
+      });
+      overlay.appendChild(btn);
+      this.invToggleBtn = btn;
     }
     this.engine.setListener({
       onBladeHitEnemy: (blade, target, hitPoint) => {
@@ -323,9 +337,19 @@ export class BattleState implements IGameState {
     this.playerTrail.clear();
     this.trails.clear();
     this.projectiles = [];
+    // 清理背包 DOM（按钮移除、面板隐藏、暂停标志复位）
+    this.invToggleBtn?.remove();
+    this.invToggleBtn = null;
+    this.inventoryPanel?.hide();
+    this.pausedForInventory = false;
   }
 
   update(dt: number, ctx: GameContext): void {
+    // 背包开关（B 键 toggle，统一在此处理；置于暂停早退之前，确保背包打开期间仍能关闭）
+    if (ctx.input.isPressed('KeyB')) {
+      this.toggleInventory();
+    }
+
     // 升级/背包暂停（面板期间冻结战斗，UI 由 DOM 层驱动）
     if (this.pausedForUpgrade || this.pausedForInventory) {
       this.camera.update(dt);
@@ -347,18 +371,6 @@ export class BattleState implements IGameState {
 
     // 逆刃冷却
     if (this.reverseCd > 0) this.reverseCd = Math.max(0, this.reverseCd - dt);
-
-    // 背包开关（B 键 toggle，统一在此处理）
-    if (ctx.input.isPressed('KeyB') && this.inventoryPanel) {
-      if (this.inventoryPanel.visible) {
-        this.inventoryPanel.hide();
-        this.pausedForInventory = false;
-        this.applyModsToCombat(); // 穿戴变化立即生效
-      } else {
-        this.inventoryPanel.show();
-        this.pausedForInventory = true;
-      }
-    }
 
     // 逆刃切换（空格键，M6 确认；解锁需 mods.reverseEdge，CD 8s）
     if (ctx.input.isPressed('Space') && this.mods.reverseEdge && this.reverseCd <= 0) {
@@ -515,6 +527,19 @@ export class BattleState implements IGameState {
       }
     }
     this.drops = this.drops.filter((d) => d.x > -999);
+  }
+
+  /** 背包开关（B 键与 HUD 背包按钮共用入口；升级三选一期间不响应，避免双面板重叠） */
+  private toggleInventory(): void {
+    if (!this.inventoryPanel || this.pausedForUpgrade) return;
+    if (this.inventoryPanel.visible) {
+      this.inventoryPanel.hide();
+      this.pausedForInventory = false;
+      this.applyModsToCombat(); // 穿戴变化立即生效
+    } else {
+      this.inventoryPanel.show();
+      this.pausedForInventory = true;
+    }
   }
 
   /** 背包关闭钩子（保留 API：外部队列需要时手动恢复） */
@@ -1182,6 +1207,10 @@ export class BattleState implements IGameState {
     this.inventory.addItem(item);
     this.renderSystem.flash('gold', 0.5, 0.5);
     this.particles.levelUp(this.player.pos);
+
+    // 通关回满血（#002：原跨关继承残血，残血开新关连续作战压力过大；
+    // 经验/装备/背包等局内成长照常继承）
+    this.player.heal(this.player.hpMax);
 
     // 图鉴与进度
     this.codex.bestLevel = Math.max(this.codex.bestLevel, lv);

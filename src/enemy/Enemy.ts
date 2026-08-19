@@ -203,7 +203,14 @@ export class Enemy {
       this.dashTimer += dt;
       this.pos.x += this.dashDir.x * this.dashSpeed() * dt;
       this.pos.y += this.dashDir.y * this.dashSpeed() * dt;
-      if (this.dashTimer >= 0) this.plan = 'chase';
+      if (this.dashTimer >= 0) {
+        // 冲刺结束：dashTimer 精确归零（过冲的小正值会被下方 windup 分支
+        // 误判为"新一次蓄力"→ 零前摇立即再冲，冷却完全失效，#003 修复）；
+        // 冷却自冲刺结束时重置满值（蓄力/冲刺本身不占用冷却）
+        this.dashTimer = 0;
+        this.dashCd = this.dashParams().cooldown;
+        this.plan = 'chase';
+      }
       return;
     }
 

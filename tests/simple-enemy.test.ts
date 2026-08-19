@@ -139,22 +139,38 @@ describe('冲刺行为（恶犬/铁甲护卫/剑奴）', () => {
     expect(HOUND_DASH.speed).toBe(300);
   });
 
-  it('冲刺后进入冷却', () => {
+  it('冲刺结束进入冷却：冷却期内不再冲刺（回归 #003：零前摇连冲）', () => {
     const h = makeHarness();
     const e = makeEnemy('hound', vec2(500, 500), h.hooks);
-    const player = vec2(700, 500);
+    const player = vec2(900, 500); // 距离 400 ∈ (80,600)
     e.tick(1 / 60, player, 2400, 1350); // 触发蓄力
-    // 跑完蓄力+冲刺+冷却期
-    for (let i = 0; i < 60 * (0.4 + 0.5 + 3.9); i++) {
+    expect(e.windupKind).toBe('dash');
+    e.tick(0.4, player, 2400, 1350); // 蓄力整段走完 → 转入冲刺
+    expect(e.dashing).toBe(true);
+    e.tick(0.3, player, 2400, 1350); // 冲刺剩余 -0.2
+    e.tick(0.25, player, 2400, 1350); // 冲刺结束（过冲 +0.05s，旧代码会误判为新蓄力 → 立即再冲）
+    expect(e.dashing).toBe(false);
+    // 冷却期（自冲刺结束起 4s）内不得再次蓄力/冲刺
+    for (let i = 0; i < 60 * 1.5; i++) {
       e.tick(1 / 60, player, 2400, 1350);
+      expect(e.dashing || e.windupKind === 'dash').toBe(false);
     }
-    // 冷却结束后可再次触发
-    let dashed = false;
-    for (let i = 0; i < 120; i++) {
+  });
+
+  it('冷却结束后可再次冲刺（冷却自冲刺结束起算）', () => {
+    const h = makeHarness();
+    const e = makeEnemy('hound', vec2(500, 500), h.hooks);
+    let player = vec2(900, 500); // 距离 400 ∈ (80,600)
+    e.tick(1 / 60, player, 2400, 1350); // 触发蓄力
+    // 玩家以 120px/s 向右跑（快于恶犬追击 110px/s），全程保持在冲刺触发区间
+    let secondDash = false;
+    for (let i = 0; i < 60 * 7; i++) {
+      player = vec2(player.x + 120 / 60, 500);
       e.tick(1 / 60, player, 2400, 1350);
-      if (e.windupKind === 'dash' || e.dashing) dashed = true;
+      // 首次冲刺约 0.92s 结束；二次冲刺应在冷却结束（0.92+4≈4.92s）之后出现
+      if (i > 60 * 2 && (e.windupKind === 'dash' || e.dashing)) secondDash = true;
     }
-    expect(dashed).toBe(true);
+    expect(secondDash).toBe(true);
   });
 });
 
