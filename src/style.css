@@ -1,0 +1,70 @@
+/* ============================================================
+ * 《藏锋出鞘》全局样式
+ * 卡通 2D 武侠设计 Token（wiki/10-art 美术规范 + 设计系统配色）
+ * ============================================================ */
+
+/* Tailwind CSS CDN（供后续 DOM UI 覆盖层使用） */
+@import url('https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css');
+
+:root {
+  /* 主色：朱红 / 鎏金 / 橙 */
+  --color-primary-red: #c0392b;
+  --color-primary-gold: #d4a853;
+  --color-primary-orange: #e8763a;
+
+  /* 背景：玄黑 / 褐黑 / 米白 */
+  --color-bg-ink: #1a1a1f;
+  --color-bg-brown: #2b2018;
+  --color-bg-paper: #f5ede0;
+
+  /* 文字 */
+  --color-text-light: #f5ede0;
+  --color-text-dark: #1a1a1f;
+  --color-text-gold: #d4a853;
+
+  /* 功能色 */
+  --color-fn-green: #3ba272;
+  --color-fn-cyan: #4fd1c5;
+  --color-fn-red: #c0392b;
+  --color-fn-yellow: #f6c344;
+
+  /* 字体 */
+  --font-wuxia: 'Alimama ShuHeiTi', '思源黑体', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+
+  /* 描边 */
+  --outline-ink: #1a1a1f;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--color-bg-ink);
+  overflow: hidden;
+  font-family: var(--font-wuxia);
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 主画布：实际显示尺寸由 main.ts 按 letterbox 等比缩放计算 */
+#game {
+  display: block;
+  background: var(--color-bg-ink);
+  box-shadow: 0 0 90px rgba(212, 168, 83, 0.12);
+}
+
+/* DOM UI 覆盖层：默认不拦截事件，具体界面自行开启 pointer-events */
+#ui-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}

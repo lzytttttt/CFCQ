@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>藏锋出鞘</title>
+  <link rel="stylesheet" href="/src/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 游戏主画布：逻辑分辨率 1920x1080，等比缩放 letterbox -->
+    <canvas id="game" width="1920" height="1080"></canvas>
+    <!-- DOM UI 覆盖层：主菜单 / 升级三选一 / 背包 / 剧情对话（后续阶段填充） -->
+    <div id="ui-overlay"></div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
