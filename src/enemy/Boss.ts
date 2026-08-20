@@ -19,6 +19,11 @@ import type { HitTarget } from '../physics/CollisionEngine';
 import type { BossData, BossStage } from '../data/bosses';
 import type { ProjectileSpec } from './Projectile';
 
+/** 横扫判定半径（px）：伤害判定与预警圈渲染共用（wiki/05-enemy/Boss设计.md §3.2） */
+const SWEEP_RADIUS = 140;
+/** 重击判定半径（px）：伤害判定与预警圈渲染共用 */
+const HEAVY_RADIUS = 220;
+
 export interface BossHooks {
   damagePlayer(amount: number, source: string, kind: 'contact' | 'aoe' | 'explosion' | 'wave'): void;
   spawnProjectile(spec: ProjectileSpec, pos: Vec2, dir: Vec2, ownerId: number): void;
@@ -130,6 +135,21 @@ export class Boss {
     return this.spec.stages[this.stage - 1]!;
   }
 
+  /**
+   * 当前前摇技能的攻击范围半径（px），供渲染层绘制淡淡的预警圈；
+   * 非前摇状态或直线技能（冲锋）为 0 —— 不绘制。
+   */
+  get attackTelegraphRadius(): number {
+    switch (this.action) {
+      case 'windupSweep':
+        return SWEEP_RADIUS;
+      case 'windupHeavy':
+        return HEAVY_RADIUS;
+      default:
+        return 0;
+    }
+  }
+
   tick(dt: number, playerPos: Vec2, worldW: number, worldH: number): void {
     if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt);
     if (this.brokenGuard > 0) this.brokenGuard = Math.max(0, this.brokenGuard - dt);
@@ -200,8 +220,8 @@ export class Boss {
         this.actionTimer -= dt;
         this.clashWindow = true;
         if (this.actionTimer <= 0) {
-          // 横扫判定（140px 范围）
-          if (dist < 140) this.hooks.damagePlayer(this.damageOf(1), this.spec.name, 'aoe');
+          // 横扫判定（SWEEP_RADIUS 范围）
+          if (dist < SWEEP_RADIUS) this.hooks.damagePlayer(this.damageOf(1), this.spec.name, 'aoe');
           this.hooks.fx('slam', this.pos);
           this.action = 'track';
           this.cooldown = 2.2;
@@ -234,7 +254,7 @@ export class Boss {
         this.actionTimer -= dt;
         this.clashWindow = true;
         if (this.actionTimer <= 0) {
-          if (dist < 220) this.hooks.damagePlayer(this.damageOf(1), this.spec.name, 'aoe');
+          if (dist < HEAVY_RADIUS) this.hooks.damagePlayer(this.damageOf(1), this.spec.name, 'aoe');
           this.hooks.fx('slam', this.pos);
           this.cameraShake();
           this.action = 'track';

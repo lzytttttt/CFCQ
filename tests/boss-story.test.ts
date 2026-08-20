@@ -138,6 +138,61 @@ describe('Boss 技能行为', () => {
   });
 });
 
+describe('Boss 攻击范围预警圈（测试小修 #004）', () => {
+  it('赵横横扫前摇暴露 140px 预警半径，非前摇为 0', () => {
+    const boss = makeBoss('zhaoheng');
+    expect(boss.attackTelegraphRadius).toBe(0);
+    // 初始冷却 1.5s 走完 → 进入横扫前摇（0.6s）
+    boss.tick(1.6, vec2(1000, 500), 2400, 1350);
+    expect(boss.attackTelegraphRadius).toBe(140);
+    // 前摇结束回到追踪 → 预警消失
+    boss.tick(0.7, vec2(1000, 500), 2400, 1350);
+    expect(boss.attackTelegraphRadius).toBe(0);
+  });
+
+  it('欧阳冶重击前摇暴露 220px 预警半径', () => {
+    const boss = makeBoss('ouyangye');
+    boss.tick(1.6, vec2(1000, 500), 2400, 1350);
+    expect(boss.attackTelegraphRadius).toBe(220);
+  });
+
+  it('冲锋为直线技能，不提供圆形预警半径', () => {
+    const boss = makeBoss('zhaoheng');
+    boss.stage = 2;
+    (boss as unknown as { action: string }).action = 'windupCharge';
+    expect(boss.attackTelegraphRadius).toBe(0);
+  });
+});
+
+describe('Boss 刀体可见性前提（测试小修 #005）', () => {
+  // 渲染层 BladeRenderer.drawBlade 内部 `if (!blade.active) return` 会跳过非激活刀体；
+  // 本用例保护 Boss 刀体满足渲染前提（active / owner / ownerId / 刀长），
+  // 防止 Boss.tick 路径或刀体构造改动导致武器再次不可见。
+  it('6 个 Boss 刀体均 active=true / owner=enemy / ownerId 匹配 target.id', () => {
+    for (let lv = 1; lv <= 6; lv++) {
+      const spec = BOSSES_BY_LEVEL.get(lv)!;
+      const boss = makeBoss(spec.id);
+      expect(boss.blades.length).toBeGreaterThan(0);
+      for (const b of boss.blades) {
+        expect(b.active).toBe(true);          // BladeRenderer.drawBlade 不被 `!active` 拦截
+        expect(b.owner).toBe('enemy');        // trailOf key 命中 `${owner}:...`
+        expect(b.ownerId).toBe(boss.target.id);
+        expect(b.length).toBeGreaterThan(0);  // 非零刀长，刀刃可见
+      }
+    }
+  });
+
+  it('tick 后刀体 active 维持 true 且中心同步持有者位置', () => {
+    const boss = makeBoss('zhaoheng');
+    boss.tick(1 / 60, vec2(1000, 500), 2400, 1350);
+    for (const b of boss.blades) {
+      expect(b.active).toBe(true);
+      expect(b.center.x).toBe(boss.pos.x);
+      expect(b.center.y).toBe(boss.pos.y);
+    }
+  });
+});
+
 describe('Boss 数据与关卡映射', () => {
   it('一关一 Boss', () => {
     for (let lv = 1; lv <= 6; lv++) {

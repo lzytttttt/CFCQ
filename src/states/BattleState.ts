@@ -1175,6 +1175,10 @@ export class BattleState implements IGameState {
       for (const e of g2.enemies) {
         for (const b of e.blades) br.drawBlade(g, b, g2.trailOf(b));
       }
+      // Boss 刀体（与玩家/敌人同层渲染，测试小修 #005）
+      if (g2.boss) {
+        for (const b of g2.boss.blades) br.drawBlade(g, b, g2.trailOf(b));
+      }
     });
 
     this.renderSystem.clearLayer(RenderLayer.Pickups);
@@ -1820,6 +1824,19 @@ export class BattleState implements IGameState {
     if (!b || !b.alive) return;
     // 无敌（阶段切换/风暴）半透明
     if (b.invulnerable) g.globalAlpha = 0.55;
+    // 攻击范围预警圈（前摇期间淡淡的圈：横扫/重击等圆形判定范围，测试小修 #004）
+    const teleR = b.attackTelegraphRadius;
+    if (teleR > 0) {
+      g.fillStyle = 'rgba(232, 118, 58, 0.06)';
+      g.strokeStyle = 'rgba(232, 118, 58, 0.32)';
+      g.lineWidth = 3;
+      g.setLineDash([12, 10]);
+      g.beginPath();
+      g.arc(b.pos.x, b.pos.y, teleR, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+      g.setLineDash([]);
+    }
     g.fillStyle = b.hitFlash > 0 ? '#ffffff' : '#7a2a3a';
     g.strokeStyle = '#1a1a1f';
     g.lineWidth = 5;
