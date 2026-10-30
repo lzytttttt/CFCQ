@@ -38,6 +38,31 @@ npm run build
 npm test
 ```
 
+### 固定随机种子（调试/测试）
+
+启动游戏时可在 URL 添加 `?seed=<0..4294967295>`，例如 `http://localhost:5173/?seed=12345`，以复现相同的随机序列和关卡布局。省略参数时仍使用时间种子；非法或超范围的值也会安全回退到时间种子。此参数只控制使用共享 RNG 的随机过程（包括关卡生成），不保证不同版本或代码变更后的游戏过程完全一致。
+
+### 浏览器冒烟与自动实玩
+
+浏览器测试独立于 `npm test`，需要 Python Playwright 和 Chromium。先安装依赖并启动开发服务器：
+
+```bash
+python3 -m pip install playwright
+python3 -m playwright install chromium
+npm run dev
+```
+
+在另一终端运行：
+
+```bash
+python3 tests/browser-smoke.py
+python3 tests/browser-playtest.py
+```
+
+冒烟脚本用调试状态注入检查 Boss、死亡和胜利，不等于自然通关。自动实玩脚本在浏览器中发送按键并读取调试状态导航，默认并行运行五个种子，单局最多 150 秒，记录写入 `cfcq-playtest-results.json`；这不替代真人试玩。可通过环境变量 `CFCQ_URL` 指定服务器、`CFCQ_CHROMIUM` 指定浏览器可执行文件、`CFCQ_MAX_SECONDS` 设置时限、`CFCQ_PLAYTEST_OUTPUT` 指定记录文件。
+
+本次测试结果见 [P1 浏览器实玩记录](wiki/11-report/P1-浏览器实玩记录-20261030.md)。
+
 ## 目录结构
 
 ```

@@ -51,6 +51,8 @@ import { LEVELS_BY_ID } from '../data/levels';
 import { formatAffix } from '../equipment/EquipmentGenerator';
 import { Boss, type BossHooks } from '../enemy/Boss';
 import { Dialog, injectDialogStyles } from '../ui/Dialog';
+import { PausePanel, escapeAction, injectPausePanelStyles } from '../ui/PausePanel';
+import { canResolveRoomWave, restoreAfterLevelClear, shouldFreezeVictory } from './flowPolicy';
 import { chapterOf, ENDINGS } from '../data/story';
 import { BOSSES_BY_LEVEL } from '../data/bosses';
 import type { DialogLine } from '../data/story';
@@ -123,6 +125,8 @@ export class BattleState implements IGameState {
   private gearGen!: EquipmentGenerator;
   private upgradePanel: UpgradePanel | null = null;
   private inventoryPanel: InventoryPanel | null = null;
+  private pausePanel: PausePanel | null = null;
+  private pausedForPauseMenu = false;
   /** HUD 背包按钮（右下角常驻，点击开关背包，与 B 键等效） */
   private invToggleBtn: HTMLElement | null = null;
   /** 升级暂停标志（升级面板期间冻结战斗） */
@@ -383,12 +387,14 @@ export class BattleState implements IGameState {
     const reward = this.progress.levelClearReward(lv);
     this.player.addKillExp(reward.exp);
     this.inventory.scrap += reward.scrap;
+    restoreAfterLevelClear(this.player);
 
     if (lv >= 6) {
       // 第 6 关通关 → 双结局
       this.codex.bestLevel = Math.max(this.codex.bestLevel, 6);
       const hasStarter = this.collectedBlades[this.bladeIndex] === STARTER_BLADE_ID;
       this.hud.victory = true;
+      if (this.invToggleBtn) this.invToggleBtn.hidden = true;
       SaveLoad.save(this.codex, null);
       // 战后 → 结局链式播放
       const story = chapterOf(6);
@@ -510,6 +516,7 @@ export class BattleState implements IGameState {
     };
     this.player.onDeath = () => {
       this.hud.showDeathOverlay = true;
+      if (this.invToggleBtn) this.invToggleBtn.hidden = true;
     };
 
     // 碰撞引擎
@@ -533,6 +540,7 @@ export class BattleState implements IGameState {
     injectUpgradePanelStyles();
     injectInventoryStyles();
     injectDialogStyles();
+    injectPausePanelStyles();
     const overlay = document.getElementById('ui-overlay');
     if (overlay) {
       this.upgradePanel ??= new UpgradePanel(overlay);
@@ -543,6 +551,8 @@ export class BattleState implements IGameState {
         () => this.switchBlade(),
       );
       this.dialog ??= new Dialog(overlay);
+      this.pausePanel?.destroy();
+      this.pausePanel = new PausePanel(overlay, () => this.resumeFromPause());
     }
     // 剧情标记重置 + 开场对话
     this.storyFlags = { openingPlayed: false, midPlayed: false, preBossPlayed: false, postBossPlayed: false };
@@ -598,6 +608,8 @@ export class BattleState implements IGameState {
     this.pendingUpgrades = [];
     this.pausedForUpgrade = false;
     this.pausedForInventory = false;
+    this.pausedForPauseMenu = false;
+    this.pausePanel?.hide();
     this.reverseEdgeOn = false;
     this.reverseCd = 0;
     this.clashWinStreak = 0;
@@ -636,11 +648,33 @@ export class BattleState implements IGameState {
     // 清理背包 DOM（按钮移除、面板隐藏、暂停标志复位）
     this.invToggleBtn?.remove();
     this.invToggleBtn = null;
+    this.pausePanel?.destroy();
+    this.pausedForPauseMenu = false;
     this.inventoryPanel?.hide();
     this.pausedForInventory = false;
+    this.pausedForUpgrade = false;
+    this.pausedForDialog = false;
   }
 
   update(dt: number, ctx: GameContext): void {
+    // 背包中的 ESC 表示返回；升级/剧情期间忽略，终局状态不弹暂停。
+    if (ctx.input.isPressed('Escape')) {
+      const action = escapeAction({
+        inventory: this.pausedForInventory,
+        paused: this.pausedForPauseMenu,
+        upgrade: this.pausedForUpgrade,
+        dialog: this.pausedForDialog,
+        dead: this.hud.showDeathOverlay,
+        victory: this.hud.victory,
+      });
+      if (action === 'close-inventory') this.toggleInventory();
+      else if (action === 'resume') this.resumeFromPause();
+      else if (action === 'pause') {
+        this.pausedForPauseMenu = true;
+        this.pausePanel?.show();
+      }
+    }
+    if (this.pausedForPauseMenu) return;
     // 背包开关（B 键 toggle，统一在此处理；置于暂停早退之前，确保背包打开期间仍能关闭）
     if (ctx.input.isPressed('KeyB')) {
       this.toggleInventory();
@@ -653,6 +687,20 @@ export class BattleState implements IGameState {
       this.damageNumbers.update(dt);
       this.renderSystem.update(dt);
       this.dialog?.tick();
+      return;
+    }
+
+    // 结局对话结束后保持终局冻结；不再推进战斗、移动或 POI 交互。
+    if (shouldFreezeVictory(this.hud.victory)) {
+      this.dialog?.tick();
+      this.camera.update(dt);
+      this.particles.update(dt);
+      this.damageNumbers.update(dt);
+      this.renderSystem.update(dt);
+      if (!this.player.alive && !this.deathSaved) {
+        this.deathSaved = true;
+        this.onPlayerDeathSave();
+      }
       return;
     }
 
@@ -834,9 +882,10 @@ export class BattleState implements IGameState {
     this.drops = this.drops.filter((d) => d.x > -999);
   }
 
-  /** 背包开关（B 键与 HUD 背包按钮共用入口；升级三选一期间不响应，避免双面板重叠） */
+  /** 背包开关（升级、暂停和终局期间不可打开） */
   private toggleInventory(): void {
-    if (!this.inventoryPanel || this.pausedForUpgrade) return;
+    if (!this.inventoryPanel || this.pausedForUpgrade || this.pausedForPauseMenu ||
+        this.hud.victory || !this.player.alive) return;
     if (this.inventoryPanel.visible) {
       this.inventoryPanel.hide();
       this.pausedForInventory = false;
@@ -848,6 +897,11 @@ export class BattleState implements IGameState {
     }
   }
 
+  private resumeFromPause(): void {
+    if (!this.pausedForPauseMenu) return;
+    this.pausedForPauseMenu = false;
+    this.pausePanel?.hide();
+  }
   /** 背包关闭钩子（保留 API：外部队列需要时手动恢复） */
   private inventoryPanelRefreshHook(): void {
     this.pausedForInventory = this.inventoryPanel?.visible ?? false;
@@ -1635,7 +1689,7 @@ export class BattleState implements IGameState {
     const room = this.plan.rooms[this.progress.roomIndex]!;
 
     // 战斗类房间：清完一波 → 下一波或开门
-    if (this.wavesTotalInRoom > 0 && this.waveStarted && this.enemies.every((e) => !e.alive)) {
+    if (canResolveRoomWave(room.kind, this.wavesTotalInRoom, this.waveStarted) && this.enemies.every((e) => !e.alive)) {
       this.waveClearDelay += dt;
       if (this.waveClearDelay > 1.0) {
         this.waveClearDelay = 0;

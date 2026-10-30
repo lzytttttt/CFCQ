@@ -9,6 +9,7 @@ import { EventBus } from './core/EventBus';
 import { GameLoop } from './core/GameLoop';
 import type { GameContext } from './core/GameContext';
 import { RNG } from './core/RNG';
+import { resolveSeed } from './core/seed';
 import { StateMachine } from './core/StateMachine';
 import { EntityManager } from './entity/EntityManager';
 import { InputSystem } from './input/InputSystem';
@@ -43,7 +44,7 @@ function bootstrap(): void {
   const input = new InputSystem();
   input.attach();
 
-  const rng = new RNG(Date.now() >>> 0); // 每局随机种子（Rogue）
+  const rng = new RNG(resolveSeed(window.location.search, Date.now() >>> 0)); // 每局随机种子（Rogue）
   const ctx: GameContext = {
     entities: new EntityManager(),
     events: new EventBus(),
@@ -102,4 +103,3 @@ function bootstrap(): void {
 }
 
 bootstrap();
-
