@@ -27,6 +27,7 @@ import { ENEMIES_BY_ID } from '../data/enemies';
 import { Enemy, type EnemyHooks } from '../enemy/Enemy';
 import { Projectile, type ProjectileSpec } from '../enemy/Projectile';
 import { BladeRenderer, BladeTrail } from '../render/BladeRenderer';
+import { getGameArt } from '../render/ArtAssets';
 import type { Camera } from '../render/Camera';
 import { ComboTracker } from '../combat/ComboTracker';
 import { computeHitDamage, computeKnockback, COMBO_MULTIPLIER } from '../combat/Damage';
@@ -1225,7 +1226,11 @@ export class BattleState implements IGameState {
     this.renderSystem.clearLayer(RenderLayer.Blades);
     this.renderSystem.addLayer(RenderLayer.Blades, (g) => {
       const br = new BladeRenderer();
-      for (const b of g2.playerBlades) br.drawBlade(g, b, g2.trailOf(b));
+      const starterBladeArt =
+        g2.player.blade.name === '铁匠刀' ? getGameArt('tiejiangdao') : null;
+      for (const b of g2.playerBlades) {
+        br.drawBlade(g, b, g2.trailOf(b), starterBladeArt);
+      }
       for (const e of g2.enemies) {
         for (const b of e.blades) br.drawBlade(g, b, g2.trailOf(b));
       }
@@ -1834,24 +1839,29 @@ export class BattleState implements IGameState {
   }
 
   private drawBackground(g: CanvasRenderingContext2D): void {
-    // 静态地面（按关卡色调渐变：关1-2 暖褐 → 关5-6 玄黑鎏金）
     const lv = this.progress.level;
-    const warm = Math.max(0, 1 - (lv - 1) / 4); // 关1=1 → 关6≈0
-    const bg = mixColor('#2b2018', '#1a1a1f', 1 - warm * 0.6);
-    g.fillStyle = bg;
-    g.fillRect(0, 0, DEFAULT_WORLD_W, DEFAULT_WORLD_H);
-    g.strokeStyle = 'rgba(212, 168, 83, 0.05)';
-    g.lineWidth = 1;
-    g.beginPath();
-    for (let x = 96; x < DEFAULT_WORLD_W; x += 96) {
-      g.moveTo(x, 0);
-      g.lineTo(x, DEFAULT_WORLD_H);
+    const forgeArt = lv === 1 ? getGameArt('forgeBackground') : null;
+    if (forgeArt) {
+      g.drawImage(forgeArt, 0, 0, DEFAULT_WORLD_W, DEFAULT_WORLD_H);
+    } else {
+      // 程序绘制作为图片加载前、非关1关卡和资源缺失时的回退。
+      const warm = Math.max(0, 1 - (lv - 1) / 4); // 关1=1 → 关6≈0
+      const bg = mixColor('#2b2018', '#1a1a1f', 1 - warm * 0.6);
+      g.fillStyle = bg;
+      g.fillRect(0, 0, DEFAULT_WORLD_W, DEFAULT_WORLD_H);
+      g.strokeStyle = 'rgba(212, 168, 83, 0.05)';
+      g.lineWidth = 1;
+      g.beginPath();
+      for (let x = 96; x < DEFAULT_WORLD_W; x += 96) {
+        g.moveTo(x, 0);
+        g.lineTo(x, DEFAULT_WORLD_H);
+      }
+      for (let y = 96; y < DEFAULT_WORLD_H; y += 96) {
+        g.moveTo(0, y);
+        g.lineTo(DEFAULT_WORLD_W, y);
+      }
+      g.stroke();
     }
-    for (let y = 96; y < DEFAULT_WORLD_H; y += 96) {
-      g.moveTo(0, y);
-      g.lineTo(DEFAULT_WORLD_W, y);
-    }
-    g.stroke();
     // 房间障碍（Rogue 生成）
     const room = this.plan?.rooms[this.progress.roomIndex];
     if (room) {
@@ -1968,13 +1978,18 @@ export class BattleState implements IGameState {
     g.save();
     g.translate(p.pos.x, p.pos.y);
     const s = PLAYER_R;
-    g.fillStyle = '#c0392b';
-    g.strokeStyle = '#1a1a1f';
-    g.lineWidth = 4;
-    g.beginPath();
-    g.roundRect(-s, -s, s * 2, s * 2, 8);
-    g.fill();
-    g.stroke();
+    const art = getGameArt('chenfeng');
+    if (art) {
+      g.drawImage(art, -27, -30, 54, 60);
+    } else {
+      g.fillStyle = '#c0392b';
+      g.strokeStyle = '#1a1a1f';
+      g.lineWidth = 4;
+      g.beginPath();
+      g.roundRect(-s, -s, s * 2, s * 2, 8);
+      g.fill();
+      g.stroke();
+    }
     // 刀法等级指示（中心鎏金小点随等级增大，Lv 视觉反馈）
     g.fillStyle = '#d4a853';
     g.beginPath();
@@ -2003,13 +2018,28 @@ export class BattleState implements IGameState {
       if (e.spec.id === 'cultist' && e.windupKind === 'suicide') {
         bodyColor = e.windupGlow > 0.5 ? '#e8763a' : '#8e3a24';
       }
-      g.fillStyle = flash ? '#ffffff' : bodyColor;
-      g.strokeStyle = '#1a1a1f';
-      g.lineWidth = 4;
-      g.beginPath();
-      g.arc(e.pos.x, e.pos.y, e.spec.radius, 0, Math.PI * 2);
-      g.fill();
-      g.stroke();
+      const art = e.spec.id === 'lackey' ? getGameArt('banditLackey') : null;
+      if (art) {
+        const size = Math.max(48, e.spec.radius * 2.8);
+        g.drawImage(art, e.pos.x - size / 2, e.pos.y - size / 2, size, size);
+        if (flash) {
+          g.save();
+          g.globalAlpha = 0.55;
+          g.fillStyle = '#ffffff';
+          g.beginPath();
+          g.arc(e.pos.x, e.pos.y, e.spec.radius, 0, Math.PI * 2);
+          g.fill();
+          g.restore();
+        }
+      } else {
+        g.fillStyle = flash ? '#ffffff' : bodyColor;
+        g.strokeStyle = '#1a1a1f';
+        g.lineWidth = 4;
+        g.beginPath();
+        g.arc(e.pos.x, e.pos.y, e.spec.radius, 0, Math.PI * 2);
+        g.fill();
+        g.stroke();
+      }
       // 破势标记（金色描边）
       if (e.brokenGuard > 0) {
         g.strokeStyle = '#f6c344';
