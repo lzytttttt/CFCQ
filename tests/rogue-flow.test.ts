@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { RNG } from '../src/core/RNG';
+import { resolveSeed } from '../src/core/seed';
 import { LevelGenerator } from '../src/rogue/LevelGenerator';
 import { RunProgress } from '../src/rogue/RunProgress';
 
 describe('LevelGenerator 关卡生成（关卡设计 §5）', () => {
+  it('固定种子参数接受 32 位无符号十进制，缺省或非法值回退', () => {
+    expect(resolveSeed('?seed=0', 77)).toBe(0);
+    expect(resolveSeed('?seed=4294967295', 77)).toBe(0xffff_ffff);
+    expect(resolveSeed('', 77)).toBe(77);
+    for (const query of ['?seed=-1', '?seed=4294967296', '?seed=1.5', '?seed=abc', '?seed=']) {
+      expect(resolveSeed(query, 77)).toBe(77);
+    }
+  });
+
   it('房间数在配置范围内（关1：6-8 房含首尾）', () => {
     for (let seed = 0; seed < 30; seed++) {
       const gen = new LevelGenerator(new RNG(seed));
@@ -16,14 +26,16 @@ describe('LevelGenerator 关卡生成（关卡设计 §5）', () => {
     }
   });
 
-  it('同种子同布局（§5.5 种子复现）', () => {
+  it('同种子生成完整 LevelPlan 完全一致（§5.5 种子复现）', () => {
     const a = new LevelGenerator(new RNG(123)).generate(3);
     const b = new LevelGenerator(new RNG(123)).generate(3);
-    expect(a.rooms.length).toBe(b.rooms.length);
-    expect(a.rooms.map((r) => r.kind)).toEqual(b.rooms.map((r) => r.kind));
-    expect(JSON.stringify(a.rooms.map((r) => r.obstacles))).toBe(
-      JSON.stringify(b.rooms.map((r) => r.obstacles)),
-    );
+    expect(a).toEqual(b);
+  });
+
+  it('不同种子生成的完整 LevelPlan 存在差异', () => {
+    const a = new LevelGenerator(new RNG(123)).generate(3);
+    const b = new LevelGenerator(new RNG(124)).generate(3);
+    expect(a).not.toEqual(b);
   });
 
   it('不同关卡房间数范围递增（关6：10-12）', () => {

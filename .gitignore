@@ -17,3 +17,6 @@ Thumbs.db
 
 # 测试/工具本地数据
 .playwright-cli/
+__pycache__/
+*.py[cod]
+cfcq-playtest-results.json

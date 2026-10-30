@@ -1,0 +1,648 @@
+[
+  {
+    "seed": 101,
+    "duration_wall_s": 77.6,
+    "end_reason": "death",
+    "final": {
+      "pos": {
+        "x": 1330.9941609796733,
+        "y": 773.4614302597389
+      },
+      "hp": 0,
+      "alive": false,
+      "techLv": 4,
+      "bladeLv": 3,
+      "level": 1,
+      "room": 2,
+      "roomKind": "battle",
+      "rooms": [
+        "start",
+        "shop",
+        "battle",
+        "battle",
+        "elite",
+        "boss"
+      ],
+      "doorOpen": false,
+      "foes": [
+        {
+          "x": 1397.064835111941,
+          "y": 662.2308108537593,
+          "hp": 55,
+          "id": "raider"
+        },
+        {
+          "x": 1367.47448556041,
+          "y": 759.1469133416102,
+          "hp": 12,
+          "id": "raider"
+        }
+      ],
+      "kills": 12,
+      "dialog": false,
+      "upgrade": false,
+      "inventory": false,
+      "paused": false,
+      "death": true,
+      "victory": false,
+      "fps": 60.02464999108136
+    },
+    "rooms_visited": [
+      {
+        "time_s": 0.0,
+        "level": 1,
+        "room": 1,
+        "kind": "start",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 14.4,
+        "level": 1,
+        "room": 2,
+        "kind": "shop",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 26.0,
+        "level": 1,
+        "room": 3,
+        "kind": "battle",
+        "hp": 100,
+        "kills": 0
+      }
+    ],
+    "upgrade_choices": [
+      {
+        "time_s": 43.8,
+        "options": [
+          "破锋式",
+          "疾风步",
+          "横扫千军"
+        ],
+        "selected": "破锋式"
+      },
+      {
+        "time_s": 45.8,
+        "options": [
+          "横扫千军",
+          "狂战士",
+          "连斩"
+        ],
+        "selected": "横扫千军"
+      },
+      {
+        "time_s": 62.5,
+        "options": [
+          "破锋式",
+          "连斩",
+          "破刀诀"
+        ],
+        "selected": "破锋式"
+      }
+    ],
+    "unusual_inputs": [
+      {
+        "action": "ESC 暂停后按住 D，再 ESC 恢复",
+        "panel": true,
+        "position_unchanged": true,
+        "closed": true
+      },
+      {
+        "action": "B 打开并关闭背包",
+        "opened": true,
+        "closed": true
+      },
+      {
+        "action": "非升级/非交互点连续按 1、E、空格",
+        "result": "按键已发送，观察后续状态与异常"
+      }
+    ],
+    "snapshots": [
+      {
+        "time_s": 20.1,
+        "room": 2,
+        "hp": 100,
+        "kills": 0,
+        "fps": 46.2
+      },
+      {
+        "time_s": 40.4,
+        "room": 3,
+        "hp": 74,
+        "kills": 3,
+        "fps": 60.0
+      },
+      {
+        "time_s": 60.7,
+        "room": 3,
+        "hp": 44,
+        "kills": 7,
+        "fps": 58.9
+      }
+    ],
+    "page_errors": [],
+    "http_errors": []
+  },
+  {
+    "seed": 202,
+    "duration_wall_s": 48.3,
+    "end_reason": "death",
+    "final": {
+      "pos": {
+        "x": 193,
+        "y": 943.6577606431603
+      },
+      "hp": 0,
+      "alive": false,
+      "techLv": 1,
+      "bladeLv": 1,
+      "level": 1,
+      "room": 3,
+      "roomKind": "battle",
+      "rooms": [
+        "start",
+        "shop",
+        "treasure",
+        "battle",
+        "elite",
+        "boss"
+      ],
+      "doorOpen": false,
+      "foes": [
+        {
+          "x": 405,
+          "y": 944.8905628258693,
+          "hp": 25,
+          "id": "hound"
+        },
+        {
+          "x": 405,
+          "y": 944.8905628258693,
+          "hp": 25,
+          "id": "hound"
+        },
+        {
+          "x": 405,
+          "y": 944.8905628258693,
+          "hp": 25,
+          "id": "hound"
+        },
+        {
+          "x": 196.40476356178837,
+          "y": 937.3472614481585,
+          "hp": 25,
+          "id": "hound"
+        }
+      ],
+      "kills": 2,
+      "dialog": false,
+      "upgrade": false,
+      "inventory": false,
+      "paused": false,
+      "death": true,
+      "victory": false,
+      "fps": 58.38171184117567
+    },
+    "rooms_visited": [
+      {
+        "time_s": 0.0,
+        "level": 1,
+        "room": 1,
+        "kind": "start",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 14.3,
+        "level": 1,
+        "room": 2,
+        "kind": "shop",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 26.3,
+        "level": 1,
+        "room": 3,
+        "kind": "treasure",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 38.0,
+        "level": 1,
+        "room": 4,
+        "kind": "battle",
+        "hp": 100,
+        "kills": 0
+      }
+    ],
+    "upgrade_choices": [],
+    "unusual_inputs": [
+      {
+        "action": "ESC 暂停后按住 D，再 ESC 恢复",
+        "panel": true,
+        "position_unchanged": true,
+        "closed": true
+      },
+      {
+        "action": "B 打开并关闭背包",
+        "opened": true,
+        "closed": true
+      },
+      {
+        "action": "非升级/非交互点连续按 1、E、空格",
+        "result": "按键已发送，观察后续状态与异常"
+      }
+    ],
+    "snapshots": [
+      {
+        "time_s": 20.3,
+        "room": 2,
+        "hp": 100,
+        "kills": 0,
+        "fps": 49.7
+      },
+      {
+        "time_s": 40.6,
+        "room": 4,
+        "hp": 88,
+        "kills": 1,
+        "fps": 60.0
+      }
+    ],
+    "page_errors": [],
+    "http_errors": []
+  },
+  {
+    "seed": 303,
+    "duration_wall_s": 34.2,
+    "end_reason": "death",
+    "final": {
+      "pos": {
+        "x": 201.3309524416881,
+        "y": 364.3309524416875
+      },
+      "hp": 0,
+      "alive": false,
+      "techLv": 1,
+      "bladeLv": 1,
+      "level": 1,
+      "room": 2,
+      "roomKind": "battle",
+      "rooms": [
+        "start",
+        "shop",
+        "battle",
+        "battle",
+        "treasure",
+        "elite",
+        "boss"
+      ],
+      "doorOpen": false,
+      "foes": [
+        {
+          "x": 1280.6432721693795,
+          "y": 281.3858419435277,
+          "hp": 25,
+          "id": "hound"
+        },
+        {
+          "x": 201.45692849715388,
+          "y": 362.73582959161513,
+          "hp": 40,
+          "id": "lackey"
+        },
+        {
+          "x": 404.36093987729635,
+          "y": 673.7938197751148,
+          "hp": 40,
+          "id": "lackey"
+        }
+      ],
+      "kills": 1,
+      "dialog": false,
+      "upgrade": false,
+      "inventory": false,
+      "paused": false,
+      "death": true,
+      "victory": false,
+      "fps": 60.00475110231303
+    },
+    "rooms_visited": [
+      {
+        "time_s": 0.0,
+        "level": 1,
+        "room": 1,
+        "kind": "start",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 14.3,
+        "level": 1,
+        "room": 2,
+        "kind": "shop",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 26.2,
+        "level": 1,
+        "room": 3,
+        "kind": "battle",
+        "hp": 100,
+        "kills": 0
+      }
+    ],
+    "upgrade_choices": [],
+    "unusual_inputs": [
+      {
+        "action": "ESC 暂停后按住 D，再 ESC 恢复",
+        "panel": true,
+        "position_unchanged": true,
+        "closed": true
+      },
+      {
+        "action": "B 打开并关闭背包",
+        "opened": true,
+        "closed": true
+      },
+      {
+        "action": "非升级/非交互点连续按 1、E、空格",
+        "result": "按键已发送，观察后续状态与异常"
+      }
+    ],
+    "snapshots": [
+      {
+        "time_s": 20.2,
+        "room": 2,
+        "hp": 100,
+        "kills": 0,
+        "fps": 47.4
+      }
+    ],
+    "page_errors": [],
+    "http_errors": []
+  },
+  {
+    "seed": 404,
+    "duration_wall_s": 23.7,
+    "end_reason": "death",
+    "final": {
+      "pos": {
+        "x": 952.6208870676732,
+        "y": 384.3791129323266
+      },
+      "hp": 0,
+      "alive": false,
+      "techLv": 1,
+      "bladeLv": 1,
+      "level": 1,
+      "room": 1,
+      "roomKind": "elite",
+      "rooms": [
+        "start",
+        "elite",
+        "shop",
+        "battle",
+        "battle",
+        "battle",
+        "boss"
+      ],
+      "doorOpen": false,
+      "foes": [
+        {
+          "x": 918.4797637159114,
+          "y": 371.9702955745462,
+          "hp": 12,
+          "id": "banditlord"
+        },
+        {
+          "x": 1003.4031846809281,
+          "y": 573.683401407092,
+          "hp": 40,
+          "id": "lackey"
+        },
+        {
+          "x": 1605.0612673103676,
+          "y": 275.43790270863633,
+          "hp": 40,
+          "id": "lackey"
+        },
+        {
+          "x": 1423.7440635545952,
+          "y": 343.2274502346529,
+          "hp": 40,
+          "id": "lackey"
+        }
+      ],
+      "kills": 0,
+      "dialog": false,
+      "upgrade": false,
+      "inventory": false,
+      "paused": false,
+      "death": true,
+      "victory": false,
+      "fps": 56.170553177103415
+    },
+    "rooms_visited": [
+      {
+        "time_s": 0.0,
+        "level": 1,
+        "room": 1,
+        "kind": "start",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 14.4,
+        "level": 1,
+        "room": 2,
+        "kind": "elite",
+        "hp": 100,
+        "kills": 0
+      }
+    ],
+    "upgrade_choices": [],
+    "unusual_inputs": [
+      {
+        "action": "ESC 暂停后按住 D，再 ESC 恢复",
+        "panel": true,
+        "position_unchanged": true,
+        "closed": true
+      },
+      {
+        "action": "B 打开并关闭背包",
+        "opened": true,
+        "closed": true
+      },
+      {
+        "action": "非升级/非交互点连续按 1、E、空格",
+        "result": "按键已发送，观察后续状态与异常"
+      }
+    ],
+    "snapshots": [
+      {
+        "time_s": 20.2,
+        "room": 2,
+        "hp": 46,
+        "kills": 0,
+        "fps": 43.2
+      }
+    ],
+    "page_errors": [],
+    "http_errors": []
+  },
+  {
+    "seed": 505,
+    "duration_wall_s": 63.7,
+    "end_reason": "death",
+    "final": {
+      "pos": {
+        "x": 1257.1266710645723,
+        "y": 526.2558814405296
+      },
+      "hp": 0,
+      "alive": false,
+      "techLv": 4,
+      "bladeLv": 2,
+      "level": 1,
+      "room": 3,
+      "roomKind": "battle",
+      "rooms": [
+        "start",
+        "shop",
+        "elite",
+        "battle",
+        "battle",
+        "battle",
+        "boss"
+      ],
+      "doorOpen": false,
+      "foes": [
+        {
+          "x": 1281.4611266435377,
+          "y": 511.1948753719826,
+          "hp": 18,
+          "id": "lackey"
+        }
+      ],
+      "kills": 8,
+      "dialog": false,
+      "upgrade": false,
+      "inventory": false,
+      "paused": false,
+      "death": true,
+      "victory": false,
+      "fps": 59.98721125284608
+    },
+    "rooms_visited": [
+      {
+        "time_s": 0.0,
+        "level": 1,
+        "room": 1,
+        "kind": "start",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 14.5,
+        "level": 1,
+        "room": 2,
+        "kind": "shop",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 26.0,
+        "level": 1,
+        "room": 3,
+        "kind": "elite",
+        "hp": 100,
+        "kills": 0
+      },
+      {
+        "time_s": 49.9,
+        "level": 1,
+        "room": 4,
+        "kind": "battle",
+        "hp": 56,
+        "kills": 4
+      }
+    ],
+    "upgrade_choices": [
+      {
+        "time_s": 36.3,
+        "options": [
+          "疾风步",
+          "怒涛连斩",
+          "长虹贯日"
+        ],
+        "selected": "怒涛连斩"
+      },
+      {
+        "time_s": 37.6,
+        "options": [
+          "月牙扫",
+          "疾风步",
+          "横扫千军"
+        ],
+        "selected": "疾风步"
+      },
+      {
+        "time_s": 58.0,
+        "options": [
+          "暴起",
+          "疾风步",
+          "破刀诀"
+        ],
+        "selected": "疾风步"
+      }
+    ],
+    "unusual_inputs": [
+      {
+        "action": "ESC 暂停后按住 D，再 ESC 恢复",
+        "panel": true,
+        "position_unchanged": true,
+        "closed": true
+      },
+      {
+        "action": "B 打开并关闭背包",
+        "opened": true,
+        "closed": true
+      },
+      {
+        "action": "非升级/非交互点连续按 1、E、空格",
+        "result": "按键已发送，观察后续状态与异常"
+      }
+    ],
+    "snapshots": [
+      {
+        "time_s": 20.0,
+        "room": 2,
+        "hp": 100,
+        "kills": 0,
+        "fps": 46.3
+      },
+      {
+        "time_s": 40.0,
+        "room": 3,
+        "hp": 64,
+        "kills": 2,
+        "fps": 60.0
+      },
+      {
+        "time_s": 60.4,
+        "room": 4,
+        "hp": 16,
+        "kills": 8,
+        "fps": 60.0
+      }
+    ],
+    "page_errors": [],
+    "http_errors": []
+  }
+]
