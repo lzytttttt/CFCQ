@@ -6,6 +6,9 @@ const ASSET_PATHS = {
   forgeBackground: 'bg_lv1_tiejiangpu.png',
   chenfeng: 'char_chenfeng_battle.png',
   tiejiangdao: 'wpn_tiejiangdao.png',
+  hitVfx: 'vfx_hit.png',
+  clashVfx: 'vfx_clash.png',
+  hudFrame: 'ui_hud_frame.png',
   banditLackey: 'enm_shanfeilouluo.png',
 } as const;
 

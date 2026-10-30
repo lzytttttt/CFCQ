@@ -1,0 +1,15 @@
+{
+  "image": "vfx_clash.png",
+  "frameGrid": {
+    "columns": 4,
+    "rows": 3,
+    "frameWidth": 256,
+    "frameHeight": 256,
+    "sheetWidth": 1024,
+    "sheetHeight": 768
+  },
+  "frameCount": 12,
+  "frameOrder": "row-major; left-to-right, top-to-bottom",
+  "frameDurationMs": 50,
+  "loop": false
+}

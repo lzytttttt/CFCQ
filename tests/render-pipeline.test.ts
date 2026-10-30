@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { RNG } from '../src/core/RNG';
 import { vec2 } from '../src/math/Vec2';
 import { Camera } from '../src/render/Camera';
@@ -68,6 +68,53 @@ describe('ParticleSystem 粒子系统', () => {
     expect(() => ps.bladeBreak(vec2())).not.toThrow();
     expect(() => ps.levelUp(vec2())).not.toThrow();
     expect(ps.count).toBeGreaterThan(0);
+  });
+
+  it('美术资源加载后播放命中与拼刀雪碧图动画', () => {
+    class LoadedImage {
+      complete = true;
+      naturalWidth = 0;
+      naturalHeight = 0;
+      width = 0;
+      height = 0;
+      decoding = '';
+
+      set src(path: string) {
+        this.naturalWidth = path.includes('vfx_clash.png') ? 1024 : 384;
+        this.naturalHeight = path.includes('vfx_clash.png') ? 768 : 256;
+      }
+    }
+    vi.stubGlobal('Image', LoadedImage);
+    try {
+      const ps = new ParticleSystem(new RNG(7));
+      const drawImage = vi.fn();
+      const g = {
+        save: vi.fn(),
+        restore: vi.fn(),
+        drawImage,
+      } as unknown as CanvasRenderingContext2D;
+
+      ps.hit(vec2(100, 80), 0);
+      expect(ps.count).toBe(0); // loaded sprite replaces the procedural fallback
+      ps.draw(g);
+      expect(drawImage.mock.calls[0]?.slice(1, 5)).toEqual([0, 0, 128, 128]);
+
+      ps.update(0.076);
+      drawImage.mockClear();
+      ps.draw(g);
+      expect(drawImage.mock.calls[0]?.slice(1, 5)).toEqual([128, 0, 128, 128]);
+
+      ps.update(0.4);
+      drawImage.mockClear();
+      ps.draw(g);
+      expect(drawImage).not.toHaveBeenCalled();
+
+      ps.clash(vec2(200, 120));
+      ps.draw(g);
+      expect(drawImage.mock.calls[0]?.slice(1, 5)).toEqual([0, 0, 256, 256]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

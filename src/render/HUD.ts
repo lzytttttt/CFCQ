@@ -5,6 +5,7 @@
  */
 
 import type { PlayerEntity } from '../player/PlayerEntity';
+import { getGameArt } from './ArtAssets';
 import { VIEW_H, VIEW_W } from './View';
 
 const C = {
@@ -41,6 +42,12 @@ export class HUD {
   }
 
   draw(g: CanvasRenderingContext2D, player: PlayerEntity): void {
+    const frame = getGameArt('hudFrame');
+    if (frame) {
+      drawNineSlice(g, frame, 0, 0, 372, 140);
+      drawNineSlice(g, frame, VIEW_W - 372, 0, 372, 116);
+    }
+
     const font = (size: number, weight = 400) =>
       `${weight} ${size}px "Alimama ShuHeiTi", "Noto Sans SC", "Microsoft YaHei", sans-serif`;
 
@@ -220,6 +227,48 @@ export class HUD {
     g.fillStyle = '#1a1a1f';
     g.font = '700 12px "Alimama ShuHeiTi", sans-serif';
     g.fillText(`${label} Lv${lv}`, x + 6, y + 3);
+  }
+}
+
+function drawNineSlice(
+  g: CanvasRenderingContext2D,
+  image: HTMLImageElement,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  const border = 24;
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  const sourceX = [0, border, sourceWidth - border];
+  const sourceY = [0, border, sourceHeight - border];
+  const sourceW = [border, sourceWidth - border * 2, border];
+  const sourceH = [border, sourceHeight - border * 2, border];
+  const destX = [x, x + border, x + width - border];
+  const destY = [y, y + border, y + height - border];
+  const destW = [border, width - border * 2, border];
+  const destH = [border, height - border * 2, border];
+
+  for (let row = 0; row < 3; row++) {
+    for (let column = 0; column < 3; column++) {
+      const sw = sourceW[column]!;
+      const sh = sourceH[row]!;
+      const dw = destW[column]!;
+      const dh = destH[row]!;
+      if (sw <= 0 || sh <= 0 || dw <= 0 || dh <= 0) continue;
+      g.drawImage(
+        image,
+        sourceX[column]!,
+        sourceY[row]!,
+        sw,
+        sh,
+        destX[column]!,
+        destY[row]!,
+        dw,
+        dh,
+      );
+    }
   }
 }
 

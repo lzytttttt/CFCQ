@@ -9,6 +9,7 @@
 
 import { vec2, type Vec2 } from '../math/Vec2';
 import type { RNG } from '../core/RNG';
+import { getGameArt } from './ArtAssets';
 
 /** 同屏粒子上限（渲染管线.md §6：超出丢弃最老） */
 export const MAX_PARTICLES = 500;
@@ -32,6 +33,17 @@ interface Particle {
   rotSpeed: number;
   /** ring 外扩速度 */
   expand: number;
+}
+
+interface SpriteEffect {
+  image: HTMLImageElement;
+  pos: Vec2;
+  columns: number;
+  frameWidth: number;
+  frameHeight: number;
+  frameCount: number;
+  frameDurationMs: number;
+  elapsedMs: number;
 }
 
 interface EmitOpts {
@@ -71,6 +83,7 @@ function createParticle(): Particle {
 export class ParticleSystem {
   private pool: Particle[] = [];
   private activeCount = 0;
+  private spriteEffects: SpriteEffect[] = [];
   /** 上限截断统计（性能监控） */
   dropped = 0;
 
@@ -82,6 +95,30 @@ export class ParticleSystem {
   /** 激活粒子数 */
   get count(): number {
     return this.activeCount;
+  }
+
+  private playSpriteEffect(
+    pos: Vec2,
+    assetId: 'hitVfx' | 'clashVfx',
+    columns: number,
+    frameWidth: number,
+    frameHeight: number,
+    frameCount: number,
+    frameDurationMs: number,
+  ): boolean {
+    const image = getGameArt(assetId);
+    if (!image) return false;
+    this.spriteEffects.push({
+      image,
+      pos: vec2(pos.x, pos.y),
+      columns,
+      frameWidth,
+      frameHeight,
+      frameCount,
+      frameDurationMs,
+      elapsedMs: 0,
+    });
+    return true;
   }
 
   private acquire(): Particle | null {
@@ -141,6 +178,14 @@ export class ParticleSystem {
 
   /** 每物理帧更新（位移 + 阻尼 + 生命周期） */
   update(dt: number): void {
+    for (let i = this.spriteEffects.length - 1; i >= 0; i--) {
+      const effect = this.spriteEffects[i]!;
+      effect.elapsedMs += dt * 1000;
+      if (effect.elapsedMs >= effect.frameDurationMs * effect.frameCount) {
+        this.spriteEffects.splice(i, 1);
+      }
+    }
+
     const damp = Math.pow(DAMPING_PER_FRAME, dt * 60);
     for (const p of this.pool) {
       if (!p.active) continue;
@@ -159,6 +204,29 @@ export class ParticleSystem {
 
   /** 绘制全部活跃粒子（世界坐标系下调用） */
   draw(g: CanvasRenderingContext2D): void {
+    for (const effect of this.spriteEffects) {
+      const frame = Math.min(
+        effect.frameCount - 1,
+        Math.floor(effect.elapsedMs / effect.frameDurationMs),
+      );
+      const sx = (frame % effect.columns) * effect.frameWidth;
+      const sy = Math.floor(frame / effect.columns) * effect.frameHeight;
+      g.save();
+      g.globalAlpha = 1;
+      g.drawImage(
+        effect.image,
+        sx,
+        sy,
+        effect.frameWidth,
+        effect.frameHeight,
+        effect.pos.x - effect.frameWidth / 2,
+        effect.pos.y - effect.frameHeight / 2,
+        effect.frameWidth,
+        effect.frameHeight,
+      );
+      g.restore();
+    }
+
     for (const p of this.pool) {
       if (!p.active) continue;
       const t = p.life / p.maxLife; // 1 → 0 渐隐
@@ -220,6 +288,7 @@ export class ParticleSystem {
 
   clear(): void {
     for (const p of this.pool) p.active = false;
+    this.spriteEffects = [];
     this.activeCount = 0;
     this.dropped = 0;
   }
@@ -228,6 +297,7 @@ export class ParticleSystem {
 
   /** 命中：5-8 火花，朝命中切线方向 */
   hit(pos: Vec2, tangentDir: number): void {
+    if (this.playSpriteEffect(pos, 'hitVfx', 3, 128, 128, 6, 75)) return;
     const n = this.rng.nextInt(5, 8);
     this.emit(pos, n, {
       color: '#ffcc66',
@@ -269,6 +339,7 @@ export class ParticleSystem {
 
   /** 拼刀：16 火星四溅（白光闪由 RenderSystem.flash 承担） */
   clash(pos: Vec2): void {
+    if (this.playSpriteEffect(pos, 'clashVfx', 4, 256, 256, 12, 50)) return;
     this.emit(pos, 16, {
       color: '#ffffff',
       type: 'spark',
