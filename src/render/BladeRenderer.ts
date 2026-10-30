@@ -60,8 +60,13 @@ export class BladeRenderer {
   /** 刀光拖尾强度（0~1；上层可随转速动态调亮——转刀机制 §8 转速反馈） */
   trailAlpha = 0.35;
 
-  /** 绘制一把刀体（含拖尾）——对外主 API */
-  drawBlade(g: CanvasRenderingContext2D, blade: BladeBody, trail: BladeTrail | null): void {
+  /** 绘制一把刀体（含拖尾）；art 是刀根在左、刀尖朝右的可选贴图 */
+  drawBlade(
+    g: CanvasRenderingContext2D,
+    blade: BladeBody,
+    trail: BladeTrail | null,
+    art: HTMLImageElement | null = null,
+  ): void {
     if (!blade.active) return;
 
     g.save();
@@ -74,6 +79,12 @@ export class BladeRenderer {
 
     // ---- 刀体（旋转到当前角度） ----
     g.rotate(blade.angle);
+    if (art) {
+      const spriteHeight = Math.max(12, blade.width * 2.4);
+      g.drawImage(art, 0, -spriteHeight / 2, blade.length, spriteHeight);
+      g.restore();
+      return;
+    }
     g.lineCap = 'round';
 
     // 刀柄（0 → 0.35L）
